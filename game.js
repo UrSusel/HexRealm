@@ -13,7 +13,8 @@ let gameState = {
     steps_buffer: 0, 
     enemy_hp: 0, enemy_max_hp: 100,
     in_combat: false,
-    tutorial_completed: false
+    tutorial_completed: false,
+    is_pvp: false
 };
 
 let inCombatMode = false;
@@ -67,6 +68,7 @@ function stopWalkingSound() { if (stepInterval) { clearInterval(stepInterval); s
 
 function startGame() {
     document.getElementById('start-screen').style.display = 'none';
+    document.getElementById('game-layout').style.display = 'flex';
     playRandomTrack();
     isPlaying = true;
     const btn = document.getElementById('music-btn');
@@ -102,6 +104,11 @@ async function initGame() {
             if (gameState.in_combat && json.data.combat_state) {
                 combatState = JSON.parse(json.data.combat_state);
                 toggleCombatMode(true, gameState.hp, json.data.enemy_hp);
+            } else if (gameState.in_combat && json.data.is_pvp) {
+                // Re-enter PvP
+                gameState.is_pvp = true;
+                toggleCombatMode(true, gameState.hp, 100); // HP will update via poll
+                pollPvPState();
             } else {
                 await loadAndDrawMap();
                 startPlayerAnimation();
@@ -155,6 +162,12 @@ async function showWorldSelection() {
         modal.style.display = 'flex';
     } catch (e) {
         console.error('showWorldSelection error', e);
+    }
+}
+async function joinWorldDebug() {
+    try {
+        await joinWorld(1);
+    } catch (e) {
         showToast('Błąd pobierania listy światów', 'error');
     }
 }
@@ -197,10 +210,6 @@ async function apiPost(action, body = {}) {
 window.showWorldSelection = showWorldSelection;
 window.joinWorld = joinWorld;
 
-// Ensure world button visibility on load
-document.addEventListener('DOMContentLoaded', () => {
-    checkTutorialStatus().catch(e => console.error(e));
-});
 window.respawnPlayer = async function() {
     try {
         await fetch('api.php', {
@@ -227,10 +236,6 @@ window.selectClass = async function(id) {
     }
 };
 
-// Run tutorial check on load
-document.addEventListener('DOMContentLoaded', () => {
-    checkTutorialStatus().catch(e => console.error(e));
-});
 
 
 
@@ -366,8 +371,17 @@ function updatePlayerSprite() {
 }
 
 async function attemptMove(targetX, targetY) {
-    if (gameState.hp <= 0 || gameState.in_combat) return;
+    if (gameState.hp <= 0 || gameState.in_combat || gameState.is_pvp) return;
     if (targetX < gameState.x) playerMarker.style.transform = "scaleX(-1)"; else if (targetX > gameState.x) playerMarker.style.transform = "scaleX(1)";
+
+    // Check for interaction with other players
+    const targetPlayerId = Object.keys(otherPlayers).find(id => 
+        otherPlayers[id].x == targetX && otherPlayers[id].y == targetY
+    );
+    if (targetPlayerId) {
+        openPlayerMenu(targetPlayerId);
+        return;
+    }
 
     const res = await fetch('api.php', { 
         method: 'POST',
@@ -390,7 +404,7 @@ async function attemptMove(targetX, targetY) {
         updatePlayerVisuals(gameState.x, gameState.y, false);
         
         if (result.local_tiles) {
-            renderMapTiles(result.local_tiles);
+        renderMapTiles(result.local_tiles);
         }
         
         updateUI(result);
@@ -417,6 +431,7 @@ function toggleCombatMode(active, currentHp, enemyHp = 0) {
     const mapDiv = document.getElementById('map');
     inCombatMode = active; gameState.in_combat = active;
 
+    // Audio handling
     if (active && isPlaying) { explorationAudio.pause(); combatAudio.currentTime = 0; combatAudio.play().catch(e => console.log(e)); } 
     else if (!active && isPlaying) { combatAudio.pause(); explorationAudio.play().catch(e => console.log(e)); }
 
@@ -442,10 +457,11 @@ function toggleCombatMode(active, currentHp, enemyHp = 0) {
         const eMax = gameState.enemy_max_hp > 0 ? gameState.enemy_max_hp : (enemyHp || 100);
         updateBar('combat-enemy-fill', enemyHp, eMax);
         
-        updateApDisplay();
+        if (!gameState.is_pvp) updateApDisplay();
     } else {
         mapDiv.style.display = 'block'; combatScreen.style.display = 'none';
         combatState = null;
+        gameState.is_pvp = false;
         stopCombatAnimations();
         loadAndDrawMap();
         updatePlayerVisuals(gameState.x, gameState.y, true);
@@ -455,42 +471,116 @@ function toggleCombatMode(active, currentHp, enemyHp = 0) {
 
 function updateApDisplay() {
     const log = document.getElementById('combat-log');
-    if (combatState && combatState.turn === 'player') { 
-        log.innerText = `Twój ruch. AP: ${combatState.player_ap}/2.`; 
-    } else { 
-        log.innerText = "Tura wroga..."; 
+    if (!combatState) return;
+
+    let turnMsg = '';
+    if (combatState.turn === 'player') {
+        turnMsg = `<span style="color:#4f4; font-size:1.2em; font-weight:bold;">TWOJA TURA (AP: ${combatState.player_ap})</span> <span style="font-size:0.8em; color:#fff;">⏱️ ${combatState.turn_remaining || 30}s</span>`;
+    } else {
+        turnMsg = `<span style="color:#f66; font-size:1.2em; font-weight:bold;">RUCH PRZECIWNIKA...</span> <span style="font-size:0.8em; color:#ccc;">⏱️ ${combatState.turn_remaining || 30}s</span>`;
+    }
+
+    // Show server log if available, otherwise just turn status
+    if (combatState.log) {
+        log.innerHTML = `${turnMsg}<br><span style="color:#ccc; font-size:0.9em;">${combatState.log}</span>`;
+    } else {
+        log.innerHTML = turnMsg;
     }
 }
 
 function renderCombatArena() {
     const container = document.getElementById('combat-arena-container');
-    container.innerHTML = ''; 
-    if (!combatState || !combatState.tiles) return;
-    combatState.tiles.forEach(t => {
-        const tile = document.createElement('div'); tile.className = `tile ${t.type}`;
-        let offsetX = (t.y % 2 !== 0) ? (HEX_WIDTH / 2) : 0;
-        let posX = (t.x * HEX_WIDTH) + offsetX;
-        let posY = (t.y * HEX_HEIGHT);
-        tile.style.left = posX + 'px'; tile.style.top = posY + 'px'; tile.style.zIndex = t.y;
-        tile.onclick = () => { if(combatState.turn === 'player' && combatState.player_ap >= 1) handleCombatMove(t.x, t.y); };
-        container.appendChild(tile);
-    });
-    createCombatEntity(combatState.player_pos, 'player', container);
-    createCombatEntity(combatState.enemy_pos, 'enemy', container);
+    if (!container || !combatState || !combatState.tiles) return;
+
+    // 1. Render Tiles only if they don't exist (prevents flickering)
+    if (container.querySelectorAll('.tile').length === 0) {
+        combatState.tiles.forEach(t => {
+            const tile = document.createElement('div'); tile.className = `tile ${t.type}`;
+            let offsetX = (t.y % 2 !== 0) ? (HEX_WIDTH / 2) : 0;
+            let posX = (t.x * HEX_WIDTH) + offsetX;
+            let posY = (t.y * HEX_HEIGHT);
+            tile.style.left = posX + 'px'; tile.style.top = posY + 'px'; tile.style.zIndex = t.y;
+            tile.onclick = () => { 
+                if(combatState.turn === 'player' && combatState.player_ap >= 1) {
+                    if (gameState.is_pvp) handlePvPMove(t.x, t.y);
+                    else handleCombatMove(t.x, t.y); 
+                }
+            };
+            container.appendChild(tile);
+        });
+    }
+
+    // 2. Update Entities (Create or Move)
+    updateCombatEntity(combatState.player_pos, 'player', container);
+    updateCombatEntity(combatState.enemy_pos, 'enemy', container);
+
     updateApDisplay();
-    if (combatState.turn === 'enemy') setTimeout(handleEnemyTurn, 500);
+    
+    // Only trigger AI turn if it's PvE
+    if (!gameState.is_pvp && combatState.turn === 'enemy') setTimeout(handleEnemyTurn, 500);
 }
 
-function createCombatEntity(pos, type, container) {
-    const el = document.createElement('div'); el.className = `player ${type}`; el.id = `combat-${type}`; 
+function updateCombatEntity(pos, type, container) {
+    let el = document.getElementById(`combat-${type}`);
+    
+    // Create if missing
+    if (!el) {
+        el = document.createElement('div'); 
+        el.className = `player ${type}`; 
+        el.id = `combat-${type}`; 
+        el.style.zIndex = 100;
+        el.dataset.animState = 'idle';
+        el.style.backgroundImage = `url('assets/player/idle1.png')`;
+        // Smooth transition for movement
+        el.style.transition = "left 0.3s ease-out, top 0.3s ease-out, filter 0.2s";
+        
+        if (type === 'enemy') { 
+            el.style.transform = "scaleX(-1)"; 
+            el.onclick = () => { if(combatState.turn === 'player') { if(gameState.is_pvp) handlePvPAttack(); else handleCombatAttack(); } }; 
+        }
+        container.appendChild(el);
+    }
+
+    // Update Position
     let off = (pos.y % 2 !== 0) ? (HEX_WIDTH / 2) : 0;
-    el.style.left = ((pos.x * HEX_WIDTH) + off - 10) + 'px';
-    el.style.top = ((pos.y * HEX_HEIGHT) - 24) + 'px';
-    el.style.zIndex = 100;
-    el.dataset.animState = 'idle';
-    el.style.backgroundImage = `url('assets/player/idle1.png')`;
-    if (type === 'enemy') { el.style.filter = "hue-rotate(150deg) brightness(0.8)"; el.style.transform = "scaleX(-1)"; el.onclick = () => { if(combatState.turn === 'player') handleCombatAttack(); }; }
-    container.appendChild(el);
+    let targetX = ((pos.x * HEX_WIDTH) + off - 10);
+    let targetY = ((pos.y * HEX_HEIGHT) - 24);
+    
+    // Check for movement to animate and rotate
+    const currentLeft = parseFloat(el.style.left || el.offsetLeft);
+    const currentTop = parseFloat(el.style.top || el.offsetTop);
+    
+    if (Math.abs(targetX - currentLeft) > 1 || Math.abs(targetY - currentTop) > 1) {
+        el.dataset.animState = 'run';
+        
+        // Rotate based on movement direction
+        if (targetX > currentLeft) {
+            el.style.transform = "scaleX(1)";
+        } else if (targetX < currentLeft) {
+            el.style.transform = "scaleX(-1)";
+        }
+        
+        // Reset to idle after movement (transition is 0.3s)
+        if (el.moveTimeout) clearTimeout(el.moveTimeout);
+        el.moveTimeout = setTimeout(() => {
+            el.dataset.animState = 'idle';
+        }, 300);
+    }
+    
+    el.style.left = targetX + 'px';
+    el.style.top = targetY + 'px';
+
+    // Visuals for Turn
+    const isTurn = (combatState.turn === type);
+    if (type === 'enemy') {
+        // Enemy visuals
+        if (isTurn) el.style.filter = "hue-rotate(150deg) brightness(1.2) drop-shadow(0 0 5px red)";
+        else el.style.filter = "hue-rotate(150deg) brightness(0.8)";
+    } else {
+        // Player visuals
+        if (isTurn) el.style.filter = "brightness(1.2) drop-shadow(0 0 5px gold)";
+        else el.style.filter = "";
+    }
 }
 
 function animateCombatMove(type, targetPos) {
@@ -612,7 +702,11 @@ async function handleEnemyTurn() {
                     updateBar('combat-hp-bar', json.hp, gameState.max_hp);
                     
                     document.getElementById('combat-log').innerText = json.log;
-                    if (json.player_died) { toggleCombatMode(false); checkLifeStatus(); } else { combatState = json.combat_state; renderCombatArena(); }
+                    if (json.player_died) { 
+                        gameState.hp = 0;
+                        toggleCombatMode(false); 
+                        checkLifeStatus(); 
+                    } else { combatState = json.combat_state; renderCombatArena(); }
                 }, 500); return;
             }
             const action = actions[index];
@@ -660,6 +754,7 @@ function updateLocalState(data) {
     gameState.enemy_hp = parseInt(data.enemy_hp) || 0;
     gameState.enemy_max_hp = parseInt(data.enemy_max_hp) || 100;
     gameState.in_combat = (data.in_combat == 1);
+    gameState.is_pvp = (data.is_pvp === true);
     // Luźne porównanie (==) bo PHP może zwrócić "1" lub 1
     gameState.tutorial_completed = (data.tutorial_completed == 1);
 }
@@ -807,9 +902,11 @@ async function loadCharacterSelection() {
             slot.className = 'char-slot' + (char.id ? '' : ' empty');
             
             if (char.id) {
+                slot.style.position = 'relative';
                 slot.innerHTML = `
                     <div class="char-slot-name">${escapeHtml(char.name)}</div>
                     <div class="char-slot-class">Poziom ${char.level}</div>
+                    <img src="assets/ui/ex.png" style="position:absolute; top:8px; right:8px; width:24px; height:24px; cursor:pointer; z-index:10; filter:drop-shadow(0 0 2px #000);" onclick="event.stopPropagation(); confirmDeleteCharacter(${char.id})">
                 `;
                 slot.onclick = () => selectCharacter(char.id);
             } else {
@@ -851,6 +948,38 @@ async function submitNewCharacter() {
     }
 }
 
+window.confirmDeleteCharacter = function(charId) {
+    let modal = document.getElementById('delete-confirm-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'delete-confirm-modal';
+        modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); display:flex; justify-content:center; align-items:center; z-index:9999;';
+        modal.innerHTML = `
+            <div style="background:#222; padding:25px; border:2px solid #555; border-radius:10px; text-align:center; color:white; box-shadow:0 0 20px #000;">
+                <h2 style="margin-top:0; margin-bottom:20px;">Czy na pewno?</h2>
+                <div style="display:flex; gap:30px; justify-content:center;">
+                    <img id="del-btn-yes" src="assets/ui/play.png" style="width:50px; height:50px; cursor:pointer; transition:transform 0.1s;" title="Usuń">
+                    <img id="del-btn-no" src="assets/ui/ex.png" style="width:50px; height:50px; cursor:pointer; transition:transform 0.1s;" title="Anuluj">
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        document.getElementById('del-btn-no').onclick = () => modal.style.display = 'none';
+    }
+    
+    modal.style.display = 'flex';
+    const yesBtn = document.getElementById('del-btn-yes');
+    const newYes = yesBtn.cloneNode(true); // Remove old listeners
+    yesBtn.parentNode.replaceChild(newYes, yesBtn);
+    
+    newYes.onclick = async () => {
+        modal.style.display = 'none';
+        const res = await apiPost('delete_character', { character_id: charId });
+        if (res.status === 'success') loadCharacterSelection();
+        else showToast(res.message || 'Błąd usuwania', 'error');
+    };
+}
+
 // Check for remembered login on page load
 async function checkRememberedLogin() {
     try {
@@ -875,6 +1004,7 @@ window.handleLogin = handleLogin;
 window.handleRegister = handleRegister;
 window.handleLogout = handleLogout;
 window.toggleSettings = toggleSettings;
+window.joinWorldDebug = joinWorldDebug;
 window.playMusic = playMusic;
 window.stopMusic = stopMusic;
 window.changeCharacter = changeCharacter;
@@ -919,12 +1049,12 @@ function startOtherPlayersAnimationLoop() {
     otherPlayersAnimInterval = setInterval(() => {
         Object.values(otherPlayerMarkers).forEach(marker => {
             let state = marker.dataset.animState || 'idle';
-            let frameIdx = parseInt(marker.dataset.frameIndex || 0);
+            let frameIdx = parseInt(marker.dataset.frameIndex || 0); 
             
             const frames = playerSprites[state];
             if (frames && frames.length > 0) {
-                frameIdx = (frameIdx + 1) % frames.length;
                 marker.style.backgroundImage = `url('${frames[frameIdx]}')`;
+                frameIdx = (frameIdx + 1) % frames.length;
                 marker.dataset.frameIndex = frameIdx;
             }
         });
@@ -941,11 +1071,11 @@ async function updateOtherPlayers() {
         const data = await apiPost('get_other_players');
         if (data.status === 'success') {
             const players = data.players || [];
-            const activeIds = new Set(players.map(p => p.id));
+            const activeIds = new Set(players.map(p => String(p.id)));
             
             // Remove players that are no longer active
             Object.keys(otherPlayers).forEach(id => {
-                if (!activeIds.has(parseInt(id))) {
+                if (!activeIds.has(id)) {
                     if (otherPlayerMarkers[id]) {
                         otherPlayerMarkers[id].remove();
                         delete otherPlayerMarkers[id];
@@ -955,12 +1085,24 @@ async function updateOtherPlayers() {
             });
             
             // Update or add players
+            if (data.duel_requests && data.duel_requests.length > 0) {
+                data.duel_requests.forEach(req => showDuelRequest(req));
+            }
+            
+            if (data.my_duel_id && !gameState.in_combat) {
+                // Auto-start duel if server says we are in one
+                gameState.is_pvp = true;
+                toggleCombatMode(true, gameState.hp, 100);
+                pollPvPState();
+            }
+
             players.forEach(p => {
                 if (otherPlayers[p.id]) {
                     // Update existing player position
                     otherPlayers[p.id].x = p.pos_x;
                     otherPlayers[p.id].y = p.pos_y;
                     otherPlayers[p.id].level = p.level;
+                    otherPlayers[p.id].name = p.name;
                     renderOtherPlayer(p.id);
                 } else {
                     // Add new player
@@ -974,6 +1116,7 @@ async function updateOtherPlayers() {
                     renderOtherPlayer(p.id);
                 }
             });
+            
         }
     } catch (e) {
         console.error('updateOtherPlayers error', e);
@@ -1003,6 +1146,7 @@ function renderOtherPlayer(playerId) {
     
     let marker = otherPlayerMarkers[playerId];
 
+
     if (!marker) {
         // Create new marker
         marker = document.createElement('div');
@@ -1011,8 +1155,10 @@ function renderOtherPlayer(playerId) {
         marker.style.left = targetPixelX + 'px';
         marker.style.top = targetPixelY + 'px';
         marker.style.zIndex = 500; // Between map and own player
+
+        marker.onclick = (e) => { e.stopPropagation(); openPlayerMenu(playerId); };
         marker.style.backgroundImage = `url('assets/player/idle1.png')`;
-        
+
         marker.dataset.animState = 'idle';
         marker.dataset.frameIndex = 0;
         marker.dataset.lastX = targetPixelX;
@@ -1030,17 +1176,17 @@ function renderOtherPlayer(playerId) {
         label.style.color = '#aaffaa';
         label.style.textShadow = '0 0 3px #000';
         label.style.fontWeight = 'bold';
-        label.innerText = `${player.name} (Lvl ${player.level})`;
+        label.innerHTML = `${escapeHtml(player.name)} (Lvl ${player.level}) <span style="cursor:pointer; font-size:14px;" onclick="sendDuelRequest(${playerId})" title="Wyzwij na pojedynek">⚔️</span>`;
         
         marker.appendChild(label);
         mapDiv.appendChild(marker);
         otherPlayerMarkers[playerId] = marker;
     } else {
-        marker.style.display = 'block';
         const label = marker.querySelector('.player-label');
-        if (label) label.innerText = `${player.name} (Lvl ${player.level})`;
+        if (label) label.innerHTML = `${escapeHtml(player.name)} (Lvl ${player.level}) <span style="cursor:pointer; font-size:14px;" onclick="sendDuelRequest(${playerId})" title="Wyzwij na pojedynek">⚔️</span>`;
 
         const currentLeft = parseFloat(marker.dataset.lastX);
+
         const currentTop = parseFloat(marker.dataset.lastY);
         const deltaX = targetPixelX - currentLeft;
         const deltaY = targetPixelY - currentTop;
@@ -1048,24 +1194,38 @@ function renderOtherPlayer(playerId) {
 
         if (distance > 10) {
             const duration = distance / MOVEMENT_SPEED_PX;
-            if (targetPixelX < currentLeft) marker.style.transform = "scaleX(-1)";
-            else if (targetPixelX > currentLeft) marker.style.transform = "scaleX(1)";
-            
+            if (targetPixelX < currentLeft) {
+                marker.style.transform = "scaleX(-1)";
+                if (label) label.style.transform = "translateX(-50%) scaleX(-1)";
+            } else if (targetPixelX > currentLeft) {
+                marker.style.transform = "scaleX(1)";
+                if (label) label.style.transform = "translateX(-50%) scaleX(1)";
+            }
             marker.style.transition = `top ${duration}s linear, left ${duration}s linear`;
             marker.style.left = targetPixelX + 'px';
             marker.style.top = targetPixelY + 'px';
-            marker.dataset.animState = 'run';
+            if (marker.dataset.animState !== 'run') {
+                marker.dataset.animState = 'run';
+                marker.dataset.frameIndex = 0;
+            }
             
             if (marker.moveTimeout) clearTimeout(marker.moveTimeout);
-            marker.moveTimeout = setTimeout(() => { marker.dataset.animState = 'idle'; }, duration * 1000);
+            marker.moveTimeout = setTimeout(() => { 
+
+                marker.dataset.animState = 'idle'; 
+                marker.dataset.frameIndex = 0;
+            }, duration * 1000);
+
         } else {
             marker.style.transition = 'none';
             marker.style.left = targetPixelX + 'px';
             marker.style.top = targetPixelY + 'px';
         }
+
         marker.dataset.lastX = targetPixelX;
         marker.dataset.lastY = targetPixelY;
     }
+
 }
 
 function spawnCombatParticles(targetEl, color) {
@@ -1106,6 +1266,136 @@ function showFloatingDamage(targetEl, amount, color) {
     document.body.appendChild(el);
     el.animate([ { transform: 'translate(-50%, -20px) scale(0.5)', opacity: 0 }, { transform: 'translate(-50%, -60px) scale(1.2)', opacity: 1, offset: 0.2 }, { transform: 'translate(-50%, -120px) scale(1)', opacity: 0 } ], { duration: 1200, easing: 'ease-out' }).onfinish = () => el.remove();
 }
+
+// --- PVP FUNCTIONS ---
+
+window.openPlayerMenu = function(playerId) {
+    const player = otherPlayers[playerId];
+    if (!player) return;
+
+    const existing = document.getElementById('player-menu-modal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'player-menu-modal';
+    modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:flex; justify-content:center; align-items:center; z-index:2000;';
+    
+    modal.innerHTML = `
+        <div style="background:#222; padding:20px; border:2px solid #555; border-radius:8px; min-width:200px; text-align:center; color:white; box-shadow:0 0 15px #000;">
+            <h3 style="margin-top:0; color:#aaffaa;">${escapeHtml(player.name)}</h3>
+            <div style="font-size:12px; color:#ccc; margin-bottom:15px;">Poziom ${player.level}</div>
+            <button style="width:100%; margin-bottom:10px; padding:8px; cursor:pointer; background:#5a2; border:none; color:white; border-radius:4px;" onclick="sendDuelRequest(${playerId}); document.getElementById('player-menu-modal').remove()">⚔️ Wyzwij na pojedynek</button>
+            <button style="width:100%; padding:8px; cursor:pointer; background:#444; border:none; color:white; border-radius:4px;" onclick="document.getElementById('player-menu-modal').remove()">Anuluj</button>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+}
+
+window.sendDuelRequest = async function(targetId) {
+    const res = await apiPost('send_duel_request', { target_id: targetId });
+    if (res.status === 'success') showToast(res.message);
+    else showToast(res.message, 'error');
+}
+
+function showDuelRequest(req) {
+    if (document.getElementById(`duel-req-${req.id}`)) return; // Already showing
+    
+    const toast = document.createElement('div');
+    toast.id = `duel-req-${req.id}`;
+    toast.className = 'toast info';
+    toast.style.animation = 'none'; // Persistent until clicked
+    toast.innerHTML = `
+        <div><strong>${escapeHtml(req.challenger_name)}</strong> wyzywa Cię!</div>
+        <div style="margin-top:5px; display:flex; gap:10px;">
+            <button onclick="respondDuel(${req.id}, 'accept')">Walcz!</button>
+            <button onclick="respondDuel(${req.id}, 'reject')">Odrzuć</button>
+        </div>
+    `;
+    document.getElementById('toast-container').appendChild(toast);
+}
+
+window.respondDuel = async function(reqId, response) {
+    const el = document.getElementById(`duel-req-${reqId}`);
+    if (el) el.remove();
+    
+    const res = await apiPost('respond_duel_request', { request_id: reqId, response: response });
+    if (res.status === 'success' && response === 'accept') {
+        gameState.is_pvp = true;
+        toggleCombatMode(true, gameState.hp, 100);
+        pollPvPState();
+    }
+}
+
+async function pollPvPState() {
+    if (!gameState.is_pvp || !gameState.in_combat) return;
+    
+    const res = await apiPost('get_duel_state');
+    if (res.status === 'ended') {
+        if (res.hp !== undefined) gameState.hp = parseInt(res.hp);
+        toggleCombatMode(false);
+        checkLifeStatus();
+        if (gameState.hp > 0) showToast(res.message || "Pojedynek zakończony.");
+        return;
+    }
+    
+    if (res.status === 'success') {
+        const oldHp = gameState.hp;
+        combatState = res.combat_state;
+        gameState.hp = parseInt(res.my_hp);
+        gameState.enemy_hp = parseInt(res.enemy_hp);
+        gameState.enemy_max_hp = parseInt(res.enemy_max_hp);
+        combatState.turn_remaining = res.turn_remaining;
+        
+        renderCombatArena();
+        updateBar('combat-hp-bar', gameState.hp, gameState.max_hp);
+        updateBar('combat-enemy-fill', gameState.enemy_hp, gameState.enemy_max_hp);
+        document.getElementById('combat-hp').innerText = gameState.hp;
+        document.getElementById('enemy-hp').innerText = gameState.enemy_hp;
+        
+        // Detect damage taken (Visuals/Audio for victim)
+        if (gameState.hp < oldHp) {
+            const dmg = oldHp - gameState.hp;
+            playSoundEffect('hit');
+            playSoundEffect('damage', dmg);
+            const playerEl = document.getElementById('combat-player');
+            if (playerEl) {
+                spawnCombatParticles(playerEl, '#d32f2f');
+                showFloatingDamage(playerEl, dmg, '#ff1744');
+                playerEl.style.filter = "brightness(0.5) sepia(1) hue-rotate(-50deg) saturate(5)";
+                setTimeout(() => { playerEl.style.filter = ""; }, 200);
+            }
+        }
+        
+        // Log is handled in renderCombatArena -> updateApDisplay
+    }
+    
+    setTimeout(pollPvPState, 500);
+}
+
+async function handlePvPMove(x, y) { await apiPost('pvp_action', { sub_action: 'move', x, y }); }
+
+async function handlePvPAttack() { 
+    const res = await apiPost('pvp_action', { sub_action: 'attack' });
+    if (res.status === 'success') {
+        playSoundEffect('hit');
+        const enemyEl = document.getElementById('combat-enemy');
+        if (enemyEl && res.dmg) {
+             spawnCombatParticles(enemyEl, '#ffffff'); 
+             showFloatingDamage(enemyEl, res.dmg, '#ffeb3b');
+        }
+        if (res.win) {
+             showToast("Wygrałeś pojedynek!");
+             setTimeout(() => {
+                 toggleCombatMode(false);
+                 initGame(); // Refresh state to get XP/Level up
+             }, 1500);
+        }
+    } else {
+        showToast(res.message, 'error');
+    }
+}
+
 
 function showToast(message, type = 'info', duration = 3000) {
     const container = document.getElementById('toast-container');

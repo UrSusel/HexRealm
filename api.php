@@ -13,6 +13,12 @@ try {
     if ((int)$checkCol->fetchColumn() === 0) {
         $pdo->exec("ALTER TABLE characters ADD COLUMN last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
     }
+    // --- MIGRATION: Duels ---
+    $pdo->exec("CREATE TABLE IF NOT EXISTS duel_requests (id INT AUTO_INCREMENT PRIMARY KEY, challenger_id INT, target_id INT, status VARCHAR(20) DEFAULT 'pending', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS active_duels (id INT AUTO_INCREMENT PRIMARY KEY, player1_id INT, player2_id INT, current_turn_id INT, combat_state TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
+    try { $pdo->exec("ALTER TABLE characters ADD COLUMN duel_id INT DEFAULT NULL"); } catch(Exception $e){}
+    try { $pdo->exec("ALTER TABLE active_duels ADD COLUMN turn_start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP"); } catch(Exception $e){}
+
 } catch (Exception $e) {
     // ignore if migration fails
 }
@@ -194,6 +200,23 @@ if ($action === 'create_character') {
     }
 }
 
+if ($action === 'delete_character') {
+    $targetId = (int)$input['character_id'];
+    
+    $stmt = $pdo->prepare("SELECT id, in_combat FROM characters WHERE id = ? AND user_id = ?");
+    $stmt->execute([$targetId, $userId]);
+    $row = $stmt->fetch();
+    if (!$row) { echo json_encode(['status' => 'error', 'message' => 'Brak dostępu.']); exit; }
+    
+    if ($row['in_combat']) { echo json_encode(['status' => 'error', 'message' => 'Nie można usunąć postaci w trakcie walki!']); exit; }
+    
+    $pdo->prepare("DELETE FROM inventory WHERE character_id = ?")->execute([$targetId]);
+    $pdo->prepare("DELETE FROM saved_positions WHERE character_id = ?")->execute([$targetId]);
+    $pdo->prepare("DELETE FROM characters WHERE id = ?")->execute([$targetId]);
+    
+    echo json_encode(['status' => 'success']); exit;
+}
+
 if ($action === 'get_worlds_list') {
     $timeoutMinutes = 5;
     
@@ -322,6 +345,22 @@ if ($action === 'get_state') {
     if ($char['in_combat'] && empty($char['combat_state'])) {
         $pdo->prepare("UPDATE characters SET in_combat = 0 WHERE id = ?")->execute([$charId]);
         $char['in_combat'] = 0;
+    }
+
+    // Check for active duel state
+    if ($char['duel_id']) {
+        $stmt = $pdo->prepare("SELECT * FROM active_duels WHERE id = ?");
+        $stmt->execute([$char['duel_id']]);
+        $duel = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($duel) {
+            $char['in_combat'] = 1;
+            $char['is_pvp'] = true;
+            // We don't send full state here, client will poll get_duel_state
+        } else {
+            // Duel finished or invalid
+            $pdo->prepare("UPDATE characters SET duel_id = NULL, in_combat = 0 WHERE id = ?")->execute([$charId]);
+            $char['duel_id'] = null;
+        }
     }
 
     echo json_encode(['status' => 'success', 'data' => $char]);
@@ -461,6 +500,248 @@ if ($action === 'respawn') {
         ->execute([$charId, (int)$stats['world_id']]);
 
     echo json_encode(['status' => 'success']); exit;
+}
+
+// --- DUEL SYSTEM ---
+
+if ($action === 'send_duel_request') {
+    $targetId = (int)$input['target_id'];
+    if ($targetId == $charId) { echo json_encode(['status' => 'error', 'message' => 'Nie możesz walczyć sam ze sobą.']); exit; }
+    
+    // Check distance
+    $stmt = $pdo->prepare("SELECT pos_x, pos_y, in_combat, duel_id FROM characters WHERE id = ?");
+    $stmt->execute([$targetId]);
+    $target = $stmt->fetch();
+    
+    if (!$target) { echo json_encode(['status' => 'error', 'message' => 'Gracz nie istnieje.']); exit; }
+    if ($target['in_combat'] || $target['duel_id']) { echo json_encode(['status' => 'error', 'message' => 'Gracz jest zajęty walką.']); exit; }
+    
+    $dist = getGameDistance($char['pos_x'], $char['pos_y'], $target['pos_x'], $target['pos_y']);
+    if ($dist > 5) { echo json_encode(['status' => 'error', 'message' => 'Za daleko!']); exit; }
+    
+    // Check existing requests
+    $stmt = $pdo->prepare("SELECT id FROM duel_requests WHERE challenger_id = ? AND target_id = ? AND status = 'pending'");
+    $stmt->execute([$charId, $targetId]);
+    if ($stmt->fetch()) { echo json_encode(['status' => 'error', 'message' => 'Już wysłałeś wyzwanie.']); exit; }
+    
+    $pdo->prepare("INSERT INTO duel_requests (challenger_id, target_id) VALUES (?, ?)")->execute([$charId, $targetId]);
+    echo json_encode(['status' => 'success', 'message' => 'Wyzwanie wysłane!']); exit;
+}
+
+if ($action === 'respond_duel_request') {
+    $reqId = (int)$input['request_id'];
+    $response = $input['response']; // 'accept' or 'reject'
+    
+    $stmt = $pdo->prepare("SELECT * FROM duel_requests WHERE id = ? AND target_id = ? AND status = 'pending'");
+    $stmt->execute([$reqId, $charId]);
+    $req = $stmt->fetch();
+    
+    if (!$req) { echo json_encode(['status' => 'error', 'message' => 'Wyzwanie nieaktualne.']); exit; }
+    
+    if ($response === 'reject') {
+        $pdo->prepare("UPDATE duel_requests SET status = 'rejected' WHERE id = ?")->execute([$reqId]);
+        echo json_encode(['status' => 'success']); exit;
+    }
+    
+    if ($response === 'accept') {
+        // Initialize Duel
+        $challengerId = $req['challenger_id'];
+        
+        // Create Arena
+        $arenaTiles = [];
+        for ($ay = 0; $ay < 5; $ay++) {
+            for ($ax = 0; $ax < 7; $ax++) {
+                $arenaTiles[] = ['x' => $ax, 'y' => $ay, 'type' => 'grass'];
+            }
+        }
+        
+        $combatState = [
+            'p1_pos' => ['x' => 1, 'y' => 2], // Challenger
+            'p2_pos' => ['x' => 5, 'y' => 2], // Target (You)
+            'tiles' => $arenaTiles,
+            'turn_id' => $challengerId, // Challenger starts
+            'p1_ap' => 2,
+            'p2_ap' => 2,
+            'log' => 'Pojedynek rozpoczęty!'
+        ];
+        
+        $pdo->prepare("INSERT INTO active_duels (player1_id, player2_id, current_turn_id, combat_state, turn_start_time) VALUES (?, ?, ?, ?, NOW())")
+            ->execute([$challengerId, $charId, $challengerId, json_encode($combatState)]);
+        $duelId = $pdo->lastInsertId();
+        
+        // Update both players
+        $pdo->prepare("UPDATE characters SET duel_id = ?, in_combat = 1 WHERE id = ?")->execute([$duelId, $challengerId]);
+        $pdo->prepare("UPDATE characters SET duel_id = ?, in_combat = 1 WHERE id = ?")->execute([$duelId, $charId]);
+        
+        $pdo->prepare("UPDATE duel_requests SET status = 'accepted' WHERE id = ?")->execute([$reqId]);
+        
+        echo json_encode(['status' => 'success', 'duel_id' => $duelId]); exit;
+    }
+}
+
+if ($action === 'get_duel_state') {
+    if (!$char['duel_id']) { echo json_encode(['status' => 'ended']); exit; }
+    
+    // Update my last_seen so opponent knows I'm here
+    $pdo->prepare("UPDATE characters SET last_seen = NOW() WHERE id = ?")->execute([$charId]);
+    
+    $stmt = $pdo->prepare("SELECT * FROM active_duels WHERE id = ?");
+    $stmt->execute([$char['duel_id']]);
+    $duel = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$duel) { 
+        // Duel deleted (ended)
+        $pdo->prepare("UPDATE characters SET duel_id = NULL, in_combat = 0 WHERE id = ?")->execute([$charId]);
+        
+        // Return current HP so client knows if dead
+        $stmt = $pdo->prepare("SELECT hp FROM characters WHERE id = ?");
+        $stmt->execute([$charId]);
+        $hp = (int)$stmt->fetchColumn();
+        echo json_encode(['status' => 'ended', 'hp' => $hp]); exit; 
+    }
+    
+    // 1. Check for Opponent Disconnect (40s timeout)
+    $oppId = ($charId == $duel['player1_id']) ? $duel['player2_id'] : $duel['player1_id'];
+    $stmt = $pdo->prepare("SELECT last_seen FROM characters WHERE id = ?");
+    $stmt->execute([$oppId]);
+    $oppLast = $stmt->fetchColumn();
+    
+    if (time() - strtotime($oppLast) > 40) {
+        // End duel due to disconnect
+        $pdo->prepare("DELETE FROM active_duels WHERE id = ?")->execute([$duel['id']]);
+        $pdo->prepare("UPDATE characters SET duel_id = NULL, in_combat = 0 WHERE id = ?")->execute([$duel['player1_id']]);
+        $pdo->prepare("UPDATE characters SET duel_id = NULL, in_combat = 0 WHERE id = ?")->execute([$duel['player2_id']]);
+        echo json_encode(['status' => 'ended', 'message' => 'Przeciwnik rozłączony!']); exit;
+    }
+
+    // 2. Check Turn Timer (30s limit)
+    $turnStart = strtotime($duel['turn_start_time']);
+    $elapsed = time() - $turnStart;
+    if ($elapsed > 30) {
+        // Force Switch Turn
+        $state = json_decode($duel['combat_state'], true);
+        $nextTurnId = ($duel['current_turn_id'] == $duel['player1_id']) ? $duel['player2_id'] : $duel['player1_id'];
+        
+        // Reset AP logic
+        $isP1Next = ($nextTurnId == $duel['player1_id']);
+        $state['p1_ap'] = $isP1Next ? 2 : 0;
+        $state['p2_ap'] = $isP1Next ? 0 : 2;
+        $state['log'] = "Czas minął! Zmiana tury.";
+        
+        $pdo->prepare("UPDATE active_duels SET current_turn_id = ?, combat_state = ?, turn_start_time = NOW() WHERE id = ?")
+            ->execute([$nextTurnId, json_encode($state), $duel['id']]);
+            
+        // Update local vars for response
+        $duel['current_turn_id'] = $nextTurnId;
+        $duel['combat_state'] = json_encode($state);
+        $elapsed = 0;
+    }
+    
+    $remaining = max(0, 30 - $elapsed);
+
+    $state = json_decode($duel['combat_state'], true);
+    $isP1 = ($charId == $duel['player1_id']);
+    
+    // Transform state to be relative to the viewer (like PvE)
+    // "player" is ME, "enemy" is OPPONENT
+    $clientState = [
+        'turn' => ($duel['current_turn_id'] == $charId) ? 'player' : 'enemy',
+        'player_ap' => $isP1 ? $state['p1_ap'] : $state['p2_ap'],
+        'enemy_ap' => $isP1 ? $state['p2_ap'] : $state['p1_ap'],
+        'player_pos' => $isP1 ? $state['p1_pos'] : $state['p2_pos'],
+        'enemy_pos' => $isP1 ? $state['p2_pos'] : $state['p1_pos'],
+        'tiles' => $state['tiles'],
+        'log' => $state['log'] ?? ''
+    ];
+    
+    // Get Enemy HP
+    $enemyId = $isP1 ? $duel['player2_id'] : $duel['player1_id'];
+    $stmt = $pdo->prepare("SELECT hp, max_hp, name FROM characters WHERE id = ?");
+    $stmt->execute([$enemyId]);
+    $enemy = $stmt->fetch();
+    
+    echo json_encode([
+        'status' => 'success', 
+        'combat_state' => $clientState, 
+        'my_hp' => $char['hp'],
+        'enemy_hp' => $enemy['hp'],
+        'enemy_max_hp' => $enemy['max_hp'],
+        'enemy_name' => $enemy['name'],
+        'turn_remaining' => $remaining
+    ]); exit;
+}
+
+if ($action === 'pvp_action') {
+    $subAction = $input['sub_action']; // move, attack
+    if (!$char['duel_id']) { echo json_encode(['status' => 'error', 'message' => 'Brak pojedynku']); exit; }
+    
+    $stmt = $pdo->prepare("SELECT * FROM active_duels WHERE id = ?");
+    $stmt->execute([$char['duel_id']]);
+    $duel = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if ($duel['current_turn_id'] != $charId) { echo json_encode(['status' => 'error', 'message' => 'Nie twoja tura!']); exit; }
+    
+    $state = json_decode($duel['combat_state'], true);
+    $isP1 = ($charId == $duel['player1_id']);
+    $myKey = $isP1 ? 'p1' : 'p2';
+    $enKey = $isP1 ? 'p2' : 'p1';
+    
+    if ($subAction === 'move') {
+        $tx = (int)$input['x']; $ty = (int)$input['y'];
+        $myPos = $state[$myKey.'_pos'];
+        $enPos = $state[$enKey.'_pos'];
+        
+        $dist = getGameDistance($myPos['x'], $myPos['y'], $tx, $ty);
+        if ($dist > 2.2) { echo json_encode(['status' => 'error', 'message' => 'Za daleko']); exit; }
+        if ($state[$myKey.'_ap'] < ceil($dist)) { echo json_encode(['status' => 'error', 'message' => 'Brak AP']); exit; }
+        if ($tx == $enPos['x'] && $ty == $enPos['y']) { echo json_encode(['status' => 'error', 'message' => 'Zajęte']); exit; }
+        
+        $state[$myKey.'_pos'] = ['x' => $tx, 'y' => $ty];
+        $state[$myKey.'_ap'] -= ceil($dist);
+    }
+    
+    if ($subAction === 'attack') {
+        if ($state[$myKey.'_ap'] < 2) { echo json_encode(['status' => 'error', 'message' => 'Brak AP']); exit; }
+        $myPos = $state[$myKey.'_pos']; $enPos = $state[$enKey.'_pos'];
+        $dist = getGameDistance($myPos['x'], $myPos['y'], $enPos['x'], $enPos['y']);
+        if ($dist > 2.2) { echo json_encode(['status' => 'error', 'message' => 'Za daleko']); exit; }
+        
+        $dmg = rand(10, 15) + $char['base_attack'];
+        $enemyId = $isP1 ? $duel['player2_id'] : $duel['player1_id'];
+        
+        // Check Enemy HP for Kill
+        $stmt = $pdo->prepare("SELECT hp, name FROM characters WHERE id = ?");
+        $stmt->execute([$enemyId]);
+        $enemy = $stmt->fetch();
+        $newHp = $enemy['hp'] - $dmg;
+        
+        if ($newHp <= 0) {
+            // KILL - End Duel
+            $pdo->prepare("UPDATE characters SET hp = 0, duel_id = NULL, in_combat = 0 WHERE id = ?")->execute([$enemyId]);
+            $pdo->prepare("UPDATE characters SET duel_id = NULL, in_combat = 0 WHERE id = ?")->execute([$charId]);
+            $pdo->prepare("DELETE FROM active_duels WHERE id = ?")->execute([$duel['id']]);
+            echo json_encode(['status' => 'success', 'dmg' => $dmg, 'win' => true, 'log' => "Pokonałeś gracza " . $enemy['name'] . "!"]); exit;
+        } else {
+            $pdo->prepare("UPDATE characters SET hp = ? WHERE id = ?")->execute([$newHp, $enemyId]);
+            $state[$myKey.'_ap'] = 0;
+            $state['log'] = "Gracz " . $char['name'] . " zadaje $dmg obrażeń!";
+        }
+    }
+    
+    // End Turn Check
+    $turnChanged = false;
+    if ($state[$myKey.'_ap'] <= 0) {
+        $duel['current_turn_id'] = $isP1 ? $duel['player2_id'] : $duel['player1_id'];
+        $state[$enKey.'_ap'] = 2; // Reset AP for next player
+        $turnChanged = true;
+    }
+    
+    if ($turnChanged) {
+        $pdo->prepare("UPDATE active_duels SET combat_state = ?, current_turn_id = ?, turn_start_time = NOW() WHERE id = ?")->execute([json_encode($state), $duel['current_turn_id'], $duel['id']]);
+    } else {
+        $pdo->prepare("UPDATE active_duels SET combat_state = ?, current_turn_id = ? WHERE id = ?")->execute([json_encode($state), $duel['current_turn_id'], $duel['id']]);
+    }
+    echo json_encode(['status' => 'success', 'dmg' => $dmg ?? 0]); exit;
 }
 
 // --- WALKA ---
@@ -639,7 +920,7 @@ if ($action === 'get_other_players') {
     try {
         $stmt = $pdo->prepare("
             SELECT c.id, c.name, c.pos_x, c.pos_y, c.level, u.username
-            FROM characters c
+        FROM characters c
             JOIN users u ON c.user_id = u.id
             WHERE c.world_id = ? AND c.id != ? AND c.last_seen > DATE_SUB(NOW(), INTERVAL ? MINUTE)
             AND c.pos_x BETWEEN ? AND ? AND c.pos_y BETWEEN ? AND ?
@@ -651,6 +932,14 @@ if ($action === 'get_other_players') {
         $otherPlayers = [];
     }
     
-    echo json_encode(['status' => 'success', 'players' => $otherPlayers]); exit;
+    // Check for incoming duel requests
+    $stmt = $pdo->prepare("SELECT r.id, c.name as challenger_name FROM duel_requests r JOIN characters c ON r.challenger_id = c.id WHERE r.target_id = ? AND r.status = 'pending'");
+    $stmt->execute([$charId]);
+    $requests = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Check if I am in a duel (to auto-start frontend)
+    $myDuelId = $char['duel_id'];
+    
+    echo json_encode(['status' => 'success', 'players' => $otherPlayers, 'duel_requests' => $requests, 'my_duel_id' => $myDuelId]); exit;
 }
 ?>

@@ -48,6 +48,27 @@
         .tile.city_village { background-image: url('img/vilage.png'); }
         .tile:hover { filter: brightness(1.3) drop-shadow(0 0 10px white); z-index: 100 !important; }
 
+        /* --- NOCNE OŚWIETLENIE --- */
+        .night-mode .tile.city_capital, 
+        .night-mode .tile.city_village {
+            filter: brightness(1.8) drop-shadow(0 0 20px rgba(255, 220, 100, 0.9));
+        }
+        .night-mode .player.in-light {
+            filter: brightness(1.3) drop-shadow(0 0 10px rgba(255, 255, 255, 0.5));
+        }
+
+        /* --- SMOKE EFFECT --- */
+        .smoke-particle {
+            position: absolute; width: 8px; height: 8px;
+            background: rgba(255, 255, 255, 0.6); border-radius: 50%;
+            pointer-events: none;
+            animation: smokeAnim 2.5s infinite linear;
+        }
+        @keyframes smokeAnim {
+            0% { transform: translate(0, 0) scale(1); opacity: 0.5; }
+            100% { transform: translate(10px, -25px) scale(3); opacity: 0; }
+        }
+
         /* --- GRACZ/WRÓG --- */
         .player { 
             width: 128px; height: 128px; 
@@ -60,7 +81,7 @@
             pointer-events: auto !important; cursor: url('assets/ui/Cursor_02.png') 15 15, crosshair !important;
         }
         .player.enemy:hover {
-            transform: scaleX(-1) scale(1.1);
+            transform: scaleX(-1) scale(1.1); cursor: url('assets/ui/sword.png') 0 0, crosshair !important;
             filter: drop-shadow(0 0 10px red) hue-rotate(150deg) brightness(0.8);
         }
 
@@ -73,8 +94,34 @@
         .tab-content.active { display: block; }
         
         .bar-container { width: 100%; height: 8px; background: #333; border-radius: 4px; overflow: hidden; margin-top: 5px; }
+        
+        /* Nowy styl paska (3-częściowy) */
+        .big-bar-widget {
+            position: relative;
+            display: grid; grid-template-columns: 14px 1fr 14px;
+            height: 24px; width: 100%;
+            image-rendering: pixelated;
+        }
+        /* Warstwa ramki (na wierzchu) */
+        .hb-left { width: 100%; height: 100%; background: url('assets/ui/BigBar_left.png') no-repeat center; background-size: 100% 100%; z-index: 10; position: relative; pointer-events: none; }
+        .hb-middle { 
+            width: 100%; height: 100%; position: relative;
+            background: url('assets/ui/BigBar_middle.png') repeat-x center; background-size: auto 100%; z-index: 1; pointer-events: none;
+        }
+        .hb-right { width: 100%; height: 100%; background: url('assets/ui/BigBar_right.png') no-repeat center; background-size: 100% 100%; z-index: 10; position: relative; pointer-events: none; }
+        
+        /* Warstwa wypełnienia (pomiędzy tłem a końcówkami) */
+        .hb-fill-wrapper { position: absolute; top: 5px; left: 0; right: 0; bottom: 5px; width: auto; height: auto; z-index: 5; }
+        .hb-fill { 
+            height: 100%; background:  url('assets/ui/BigBar_Fill.png') repeat-x center; background-size: auto 100%; 
+            transition: width 0.2s; max-width: 100%;
+        }
+        .hb-fill.energy { filter: hue-rotate(210deg) brightness(1.2); }
+        .hb-fill.xp { filter: hue-rotate(100deg) brightness(1.1); }
+        
         .bar-fill { height: 100%; width: 50%; transition: width 0.5s; }
-        .hp-bar { background: #d32f2f; } .en-bar { background: #2196f3; } .xp-bar { background: #00e676; }
+        .hp-bar { background: #d32f2f; }
+        .en-bar { background: #2196f3; } .xp-bar { background: #00e676; }
         
         .item-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
         .item-slot { 
@@ -85,8 +132,13 @@
         .item-slot:hover { border-color: #aaa; background: #333; }
         .item-slot.equipped { border-color: #ffd700; box-shadow: 0 0 5px #ffd700; }
         
+        /* Ikony przycisków */
+        .icon-btn { background: none; border: none; cursor: pointer; padding: 5px; transition: transform 0.2s; display: inline-flex; align-items: center; justify-content: center; }
+        .icon-btn:hover { transform: scale(1.1); }
+        .icon-btn img { width: 32px; height: 32px; image-rendering: pixelated; }
+
         /* Modale */
-        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 999; display: none; flex-direction: column; align-items: center; justify-content: center; color: white; }
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 2000; display: none; flex-direction: column; align-items: center; justify-content: center; color: white; }
         .combat-btn { padding: 12px 30px; background: #c62828; color: white; border: none; font-size: 16px; margin: 10px; cursor: pointer; border-radius: 4px; font-weight: bold; }
         
         #start-screen { display: flex; z-index: 2000; background: #000; }
@@ -102,33 +154,12 @@
             position: absolute; top: 10px; right: 20px; 
             padding: 10px 20px; background: #00e676; color: #000; 
             font-weight: bold; border: none; border-radius: 5px; cursor: pointer;
-            z-index: 200; display: none; box-shadow: 0 0 10px rgba(0,230,118,0.5);
+            z-index: 1600; display: none; box-shadow: 0 0 10px rgba(0,230,118,0.5);
         }
         #world-btn:hover { background: #00c853; }
 
         /* Przycisk zamknięcia (czerwony X, jak w Windows XP) */
         .modal-panel { position: relative; }
-        .close-x {
-            position: absolute;
-            top: 8px;
-            right: 8px;
-            width: 30px;
-            height: 30px;
-            background: linear-gradient(#ff5c5c, #d32f2f);
-            border-radius: 50%;
-            border: 1px solid rgba(255,255,255,0.15);
-            color: #fff;
-            font-weight: bold;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            box-shadow: 0 2px 0 rgba(0,0,0,0.4), inset 0 -2px 0 rgba(0,0,0,0.12);
-            line-height: 0;
-            font-size: 16px;
-        }
-        .close-x:hover { filter: brightness(0.9); transform: translateY(-1px); }
-
         /* Auth & Character Selection */
         .auth-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 2001; display: none; flex-direction: column; align-items: center; justify-content: center; }
         .auth-form { background: #1b1b1b; padding: 30px; border-radius: 8px; width: 300px; color: #fff; }
@@ -217,6 +248,36 @@
     </div>
 </div>
 
+<div id="settings-modal" class="modal">
+    <div class="modal-panel" style="background:#1b1b1b; padding:30px; border-radius:8px; width:300px; text-align:center; position:relative;">
+        <button class="icon-btn" style="position:absolute; top:10px; right:10px;" onclick="toggleSettings()">
+            <img src="assets/ui/ex.png" alt="Zamknij">
+        </button>
+        
+        <h2 style="color:#00e676; margin-top:0;">Ustawienia</h2>
+        
+        <div style="margin:20px 0; background:#252525; padding:15px; border-radius:5px;">
+            <div style="display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom:10px;">
+                <img src="assets/ui/music.png" style="width:24px; height:24px;">
+                <span style="color:#ccc;">Muzyka</span>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:center; gap:15px;">
+                <button class="icon-btn" onclick="playMusic()"><img src="assets/ui/play.png" alt="Graj"></button>
+                <button class="icon-btn" onclick="stopMusic()"><img src="assets/ui/ex.png" alt="Stop"></button>
+            </div>
+            <input type="range" min="0" max="1" step="0.1" value="0.2" oninput="setVolume(this.value)" style="width:100%; margin-top:10px;">
+            
+            <div style="display:flex; align-items:center; justify-content:center; gap:10px; margin-top:15px; margin-bottom:5px;">
+                <span style="color:#ccc;">Dźwięki</span>
+            </div>
+            <input type="range" min="0" max="1" step="0.1" value="0.3" oninput="setSfxVolume(this.value)" style="width:100%;">
+        </div>
+
+        <button class="combat-btn" style="width:100%; background:#2196f3; margin:5px 0;" onclick="changeCharacter()">Zmień Postać</button>
+        <button class="combat-btn" style="width:100%; background:#d32f2f; margin:5px 0;" onclick="handleLogout()">Wyloguj</button>
+    </div>
+</div>
+
 <div id="start-screen" class="modal" style="display:flex;">
     <h1>RPG WORLD</h1>
     <button class="combat-btn" onclick="showAuthModal()">ZALOGUJ SIĘ</button>
@@ -224,7 +285,8 @@
 
 <div id="game-layout">
     <div id="left-panel">
-        <div style="position:absolute; top:10px; left:10px; color:#aaa; font-size:12px; z-index:100;">
+        <div id="day-night-overlay" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:1500; transition: background-color 5s;"></div>
+        <div style="position:absolute; top:10px; left:10px; color:#aaa; font-size:12px; z-index:1600;">
             ŚWIAT: <span id="world-info" style="color:white; font-weight:bold;">...</span>
         </div>
 
@@ -234,13 +296,10 @@
     </div>
 
     <div id="right-panel">
-        <div style="padding:15px; border-bottom:1px solid #333; display:flex; align-items:center; gap:10px; justify-content:space-between;">
-            <div style="display:flex; align-items:center; gap:10px; flex:1;">
-                <button id="music-btn" onclick="toggleMusic()" style="width:40px; height:40px; background:#333; border:none; color:white; border-radius:50%;">🔇</button>
-                <div style="font-size:12px; color:#888;">GŁOŚNOŚĆ</div>
-                <input type="range" min="0" max="1" step="0.1" oninput="setVolume(this.value)">
-            </div>
-            <button id="logout-btn" onclick="handleLogout()" style="padding:8px 12px; background:#d32f2f; color:white; border:none; border-radius:4px; cursor:pointer; font-size:12px; display:none;">Wyloguj</button>
+        <div style="padding:15px; border-bottom:1px solid #333; display:flex; justify-content:flex-end;">
+            <button class="icon-btn" onclick="toggleSettings()">
+                <img src="assets/ui/cogwheel.png" alt="Ustawienia">
+            </button>
         </div>
 
         <div class="tabs">
@@ -253,12 +312,27 @@
             <h2 id="class-name" style="margin:0;">Postać</h2>
             <div style="font-size:12px; color:#888; margin-bottom:20px;">Poziom <span id="lvl">1</span></div>
             <div>Zdrowie: <span id="hp">100 / 100</span></div>
-            <div class="bar-container"><div class="bar-fill hp-bar" id="hp-fill"></div></div>
+            <div class="big-bar-widget">
+                <div class="hb-fill-wrapper"><div class="hb-fill" id="hp-fill" style="width:100%"></div></div>
+                <div class="hb-left"></div>
+                <div class="hb-middle"></div>
+                <div class="hb-right"></div>
+            </div>
             <div style="margin-top:15px;">Energia: <span id="energy">10 / 10</span></div>
-            <div class="bar-container"><div class="bar-fill en-bar" id="en-fill"></div></div>
+            <div class="big-bar-widget">
+                <div class="hb-fill-wrapper"><div class="hb-fill energy" id="en-fill" style="width:100%"></div></div>
+                <div class="hb-left"></div>
+                <div class="hb-middle"></div>
+                <div class="hb-right"></div>
+            </div>
             <div style="text-align:right; font-size:11px; color:#666;">Kroki: <span id="steps-info">0/10</span></div>
             <div style="margin-top:15px;">XP: <span id="xp-text">0 / 100</span></div>
-            <div class="bar-container"><div class="bar-fill xp-bar" id="xp-fill"></div></div>
+            <div class="big-bar-widget">
+                <div class="hb-fill-wrapper"><div class="hb-fill xp" id="xp-fill" style="width:100%"></div></div>
+                <div class="hb-left"></div>
+                <div class="hb-middle"></div>
+                <div class="hb-right"></div>
+            </div>
         </div>
 
         <div id="tab-inventory" class="tab-content">
@@ -277,15 +351,27 @@
     <div style="display:flex; justify-content:space-between; width:1100px; margin-bottom:10px;">
         <div style="text-align:left;">
             <div style="color:#4caf50;">TY (<span id="combat-hp">100</span> HP)</div>
-            <div class="bar-container" style="width:200px;"><div class="bar-fill hp-bar" id="combat-hp-bar" style="width:100%"></div></div>
+            <div class="big-bar-widget" style="width:350px;">
+                <div class="hb-fill-wrapper"><div class="hb-fill" id="combat-hp-bar" style="width:100%"></div></div>
+                <div class="hb-left"></div>
+                <div class="hb-middle"></div>
+                <div class="hb-right"></div>
+            </div>
         </div>
         <div style="text-align:right;">
             <div style="color:#f44336;">WRÓG (<span id="enemy-hp">??</span> HP)</div>
-            <div class="bar-container" style="width:200px;"><div class="bar-fill hp-bar" style="width:100%; background:#f44336;"></div></div>
+            <div class="big-bar-widget" style="width:350px;">
+                <div class="hb-fill-wrapper"><div class="hb-fill" id="combat-enemy-fill" style="width:100%"></div></div>
+                <div class="hb-left"></div>
+                <div class="hb-middle"></div>
+                <div class="hb-right"></div>
+            </div>
         </div>
     </div>
     <div style="margin-top:20px; display:flex; gap:10px; justify-content: center;">
-        <button class="combat-btn" style="background:#4caf50;" onclick="handleCombatDefend()">🛡️ Obrona (1AP)</button>
+        <button class="combat-btn" style="background:#4caf50; display:flex; align-items:center; gap:5px;" onclick="handleCombatDefend()">
+            <img src="assets/ui/shield.png" style="width:20px; height:20px;"> Obrona (1AP)
+        </button>
         <button class="combat-btn" style="background:#2196f3;" onclick="useItem(7)">🧪 Mikstura (2AP)</button>
         <button class="combat-btn" style="background:#ff9800;" onclick="useItem(8)">🩹 Bandaż (2AP)</button>
     </div>
@@ -299,7 +385,9 @@
 
 <div id="world-selection" class="modal" style="display:none;">
     <div class="modal-panel" style="background:#1b1b1b; padding:20px; border-radius:8px; width:400px; max-height:70vh; overflow:auto; color:#fff;">
-        <button class="close-x" onclick="document.getElementById('world-selection').style.display='none'">✖</button>
+        <button class="icon-btn" style="position:absolute; top:10px; right:10px;" onclick="document.getElementById('world-selection').style.display='none'">
+            <img src="assets/ui/ex.png" alt="Zamknij">
+        </button>
 
         <h2 style="color:#00e676; margin-top:0;">Wybierz świat</h2>
         <div id="world-list" style="display:flex; flex-direction:column; gap:8px; margin-top:10px;"></div>

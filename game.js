@@ -11,6 +11,7 @@ let gameState = {
     energy: 10, max_energy: 10,
     xp: 0, max_xp: 100,
     steps_buffer: 0, 
+    enemy_hp: 0, enemy_max_hp: 100,
     in_combat: false,
     tutorial_completed: false
 };
@@ -34,6 +35,7 @@ combatAudio.loop = true;
 let isPlaying = false;
 explorationAudio.volume = 0.2;
 combatAudio.volume = 0.2;
+let sfxVolume = 0.3;
 
 let stepInterval = null;
 const playerSprites = {
@@ -55,7 +57,7 @@ function playSoundEffect(category, damageValue = 0) {
     if (category === 'walk') { src = AUDIO_PATHS.walk[Math.floor(Math.random() * AUDIO_PATHS.walk.length)]; } 
     else if (category === 'hit') { src = AUDIO_PATHS.hit[Math.floor(Math.random() * AUDIO_PATHS.hit.length)]; } 
     else if (category === 'damage') { let index = Math.ceil(damageValue / 2); if (index < 1) index = 1; if (index > 10) index = 10; src = AUDIO_PATHS.damage[index - 1]; }
-    if (src) { const sfx = new Audio(src); sfx.volume = 0.3; sfx.play().catch(() => {}); }
+    if (src) { const sfx = new Audio(src); sfx.volume = sfxVolume; sfx.play().catch(() => {}); }
 }
 
 function startWalkingSound() { if (stepInterval) return; playSoundEffect('walk'); stepInterval = setInterval(() => { playSoundEffect('walk'); }, 400); }
@@ -70,6 +72,8 @@ function startGame() {
     const btn = document.getElementById('music-btn');
     if(btn) { btn.innerText = '🔊'; btn.classList.add('playing'); }
     initGame();
+    updateDayNightCycle();
+    setInterval(updateDayNightCycle, 60000);
 }
 
 async function initGame() {
@@ -256,6 +260,26 @@ function renderMapTiles(tiles) {
         let posX = (parseInt(t.x) * HEX_WIDTH) + offsetX;
         let posY = (parseInt(t.y) * HEX_HEIGHT);
         if (t.type === 'mountain') posY -= 20; 
+        if (t.type === 'city_capital') {
+            posY -= 5;
+            for(let i=0; i<3; i++) {
+                const s = document.createElement('div');
+                s.className = 'smoke-particle';
+                s.style.left = '60px'; s.style.top = '40px'; 
+                s.style.animationDelay = (i * 0.8) + 's';
+                tile.appendChild(s);
+            }
+        }
+        if (t.type === 'city_village') {
+            posY -= 10; // Moved up by 10px total (5px more than before)
+            for(let i=0; i<3; i++) {
+                const s = document.createElement('div');
+                s.className = 'smoke-particle';
+                s.style.left = '75px'; s.style.top = '50px'; 
+                s.style.animationDelay = (i * 0.8) + 's';
+                tile.appendChild(s);
+            }
+        }
         
         tile.style.left = posX + 'px';
         tile.style.top = posY + 'px';
@@ -275,6 +299,13 @@ function updatePlayerVisuals(x, y, isInstant = false) {
         const tTop = targetTile.offsetTop;
         const targetPixelX = tLeft - 10; 
         const targetPixelY = tTop - 24;
+        
+        // Sprawdź czy pole jest oświetlone (miasto) dla efektu nocy
+        if (targetTile.classList.contains('city_capital') || targetTile.classList.contains('city_village')) {
+            playerMarker.classList.add('in-light');
+        } else {
+            playerMarker.classList.remove('in-light');
+        }
 
         if (isInstant) {
             playerMarker.style.transition = 'none';
@@ -401,8 +432,16 @@ function toggleCombatMode(active, currentHp, enemyHp = 0) {
         container.style.position = 'relative'; container.style.margin = '20px auto'; 
         combatScreen.insertBefore(container, document.getElementById('combat-log'));
         if (combatState) renderCombatArena();
+        
         document.getElementById('enemy-hp').innerText = enemyHp;
         document.getElementById('combat-hp').innerText = gameState.hp;
+        
+        // Aktualizacja pasków na start walki
+        updateBar('combat-hp-bar', gameState.hp, gameState.max_hp);
+        // Jeśli wchodzimy w walkę, zakładamy że enemyHp to max (chyba że wczytujemy stan)
+        const eMax = gameState.enemy_max_hp > 0 ? gameState.enemy_max_hp : (enemyHp || 100);
+        updateBar('combat-enemy-fill', enemyHp, eMax);
+        
         updateApDisplay();
     } else {
         mapDiv.style.display = 'block'; combatScreen.style.display = 'none';
@@ -527,6 +566,10 @@ async function handleCombatAttack() {
     if (json.status === 'success') {
         document.getElementById('enemy-hp').innerText = json.enemy_hp;
         document.getElementById('combat-log').innerText = json.log;
+        
+        // Aktualizacja pasków po ataku
+        updateBar('combat-enemy-fill', json.enemy_hp, gameState.enemy_max_hp);
+        
         combatState = json.combat_state;
         renderCombatArena();
         if (json.dmg_dealt) {
@@ -564,6 +607,10 @@ async function handleEnemyTurn() {
             if (index >= actions.length) {
                 setTimeout(() => {
                     document.getElementById('combat-hp').innerText = json.hp;
+                    
+                    // Aktualizacja paska gracza po turze wroga
+                    updateBar('combat-hp-bar', json.hp, gameState.max_hp);
+                    
                     document.getElementById('combat-log').innerText = json.log;
                     if (json.player_died) { toggleCombatMode(false); checkLifeStatus(); } else { combatState = json.combat_state; renderCombatArena(); }
                 }, 500); return;
@@ -593,6 +640,7 @@ async function useItem(itemId) {
     if (json.status === 'success') {
         document.getElementById('combat-hp').innerText = json.hp;
         document.getElementById('combat-log').innerText = json.message;
+        updateBar('combat-hp-bar', json.hp, gameState.max_hp);
         combatState = json.combat_state;
         renderCombatArena();
     }
@@ -609,6 +657,8 @@ function updateLocalState(data) {
     gameState.xp = parseInt(data.xp);
     gameState.max_xp = parseInt(data.max_xp) || 100;
     gameState.steps_buffer = parseInt(data.steps_buffer);
+    gameState.enemy_hp = parseInt(data.enemy_hp) || 0;
+    gameState.enemy_max_hp = parseInt(data.enemy_max_hp) || 100;
     gameState.in_combat = (data.in_combat == 1);
     // Luźne porównanie (==) bo PHP może zwrócić "1" lub 1
     gameState.tutorial_completed = (data.tutorial_completed == 1);
@@ -623,6 +673,11 @@ function updateUI(data) {
     if(data.level) document.getElementById('lvl').innerText = data.level;
 }
 
+function updateBar(elementId, current, max) {
+    const el = document.getElementById(elementId);
+    if (el) el.style.width = Math.max(0, Math.min(100, (current / max * 100))) + '%';
+}
+
 function checkLifeStatus() { const ds = document.getElementById('death-screen'); if (gameState.hp <= 0) ds.style.display = 'flex'; else ds.style.display = 'none'; }
 
 
@@ -635,12 +690,25 @@ window.switchTab = function(name) {
     document.getElementById('tab-' + name).classList.add('active');
 }
 
-function toggleMusic() {
-    const btn = document.getElementById('music-btn');
-    if (isPlaying) { explorationAudio.pause(); combatAudio.pause(); isPlaying = false; btn.innerText = '🔇'; btn.classList.remove('playing'); } 
-    else { if (inCombatMode) { combatAudio.play(); } else { if (!explorationAudio.src) playRandomTrack(); else explorationAudio.play(); } isPlaying = true; btn.innerText = '🔊'; btn.classList.add('playing'); }
+function toggleSettings() {
+    const modal = document.getElementById('settings-modal');
+    if (modal.style.display === 'flex') modal.style.display = 'none';
+    else modal.style.display = 'flex';
 }
+
+function playMusic() {
+    if (isPlaying) return;
+    if (inCombatMode) { combatAudio.play(); } else { if (!explorationAudio.src) playRandomTrack(); else explorationAudio.play(); }
+    isPlaying = true;
+}
+
+function stopMusic() {
+    explorationAudio.pause(); combatAudio.pause();
+    isPlaying = false;
+}
+
 function setVolume(val) { explorationAudio.volume = val; combatAudio.volume = val; }
+function setSfxVolume(val) { sfxVolume = val; }
 function playRandomTrack() { let next = Math.floor(Math.random() * playlist.length); explorationAudio.src = playlist[next]; explorationAudio.play().catch(e => console.log("Autoplay blocked:", e)); }
 explorationAudio.addEventListener('ended', playRandomTrack);
 
@@ -711,9 +779,16 @@ async function handleLogout() {
     stopMultiplayerPolling(); // Clean up polling
     await apiPost('logout_account');
     document.getElementById('logout-btn').style.display = 'none';
+    document.getElementById('settings-modal').style.display = 'none';
     document.getElementById('start-screen').style.display = 'flex';
     document.getElementById('game-layout').style.display = 'none';
     showAuthModal();
+}
+
+async function changeCharacter() {
+    document.getElementById('settings-modal').style.display = 'none';
+    document.getElementById('game-layout').style.display = 'none';
+    await loadCharacterSelection();
 }
 
 async function loadCharacterSelection() {
@@ -754,7 +829,6 @@ async function selectCharacter(charId) {
     const data = await apiPost('select_character', { character_id: charId });
     if (data.status === 'success') {
         document.getElementById('char-selection-modal').style.display = 'none';
-        document.getElementById('logout-btn').style.display = 'inline-block';
         startGame();
     }
 }
@@ -800,7 +874,12 @@ window.toggleAuthForm = toggleAuthForm;
 window.handleLogin = handleLogin;
 window.handleRegister = handleRegister;
 window.handleLogout = handleLogout;
+window.toggleSettings = toggleSettings;
+window.playMusic = playMusic;
+window.stopMusic = stopMusic;
+window.changeCharacter = changeCharacter;
 window.loadCharacterSelection = loadCharacterSelection;
+window.setSfxVolume = setSfxVolume;
 window.selectCharacter = selectCharacter;
 window.createNewCharacter = createNewCharacter;
 window.submitNewCharacter = submitNewCharacter;
@@ -813,6 +892,7 @@ document.addEventListener('DOMContentLoaded', () => {
 let otherPlayers = {}; // Track other players by ID: { id: { x, y, name, level, marker } }
 let otherPlayerMarkers = {}; // DOM elements for other players
 let updatePlayersInterval = null;
+let otherPlayersAnimInterval = null;
 
 // --- MULTIPLAYER POLLING ---
 
@@ -820,16 +900,40 @@ function startMultiplayerPolling() {
     if (updatePlayersInterval) clearInterval(updatePlayersInterval);
     updateOtherPlayers(); // Call once immediately
     updatePlayersInterval = setInterval(updateOtherPlayers, 1500); // Poll every 1.5 seconds
+    startOtherPlayersAnimationLoop();
 }
 
 function stopMultiplayerPolling() {
     if (updatePlayersInterval) clearInterval(updatePlayersInterval);
+    stopOtherPlayersAnimationLoop();
     // Remove all other player markers
     Object.keys(otherPlayerMarkers).forEach(id => {
         if (otherPlayerMarkers[id]) otherPlayerMarkers[id].remove();
     });
     otherPlayers = {};
     otherPlayerMarkers = {};
+}
+
+function startOtherPlayersAnimationLoop() {
+    if (otherPlayersAnimInterval) clearInterval(otherPlayersAnimInterval);
+    otherPlayersAnimInterval = setInterval(() => {
+        Object.values(otherPlayerMarkers).forEach(marker => {
+            let state = marker.dataset.animState || 'idle';
+            let frameIdx = parseInt(marker.dataset.frameIndex || 0);
+            
+            const frames = playerSprites[state];
+            if (frames && frames.length > 0) {
+                frameIdx = (frameIdx + 1) % frames.length;
+                marker.style.backgroundImage = `url('${frames[frameIdx]}')`;
+                marker.dataset.frameIndex = frameIdx;
+            }
+        });
+    }, ANIMATION_SPEED);
+}
+
+function stopOtherPlayersAnimationLoop() {
+    if (otherPlayersAnimInterval) clearInterval(otherPlayersAnimInterval);
+    otherPlayersAnimInterval = null;
 }
 
 async function updateOtherPlayers() {
@@ -856,6 +960,7 @@ async function updateOtherPlayers() {
                     // Update existing player position
                     otherPlayers[p.id].x = p.pos_x;
                     otherPlayers[p.id].y = p.pos_y;
+                    otherPlayers[p.id].level = p.level;
                     renderOtherPlayer(p.id);
                 } else {
                     // Add new player
@@ -882,46 +987,85 @@ function renderOtherPlayer(playerId) {
     const mapDiv = document.getElementById('map');
     if (!mapDiv) return;
     
-    // Remove old marker if exists
-    if (otherPlayerMarkers[playerId]) {
-        otherPlayerMarkers[playerId].remove();
-    }
-    
     // Find tile position
     const targetTile = document.querySelector(`.tile[data-x='${player.x}'][data-y='${player.y}']`);
-    if (!targetTile) return;
+    
+    // If tile is not rendered (fog of war), hide marker if it exists
+    if (!targetTile) {
+        if (otherPlayerMarkers[playerId]) otherPlayerMarkers[playerId].style.display = 'none';
+        return;
+    }
     
     const tLeft = targetTile.offsetLeft;
     const tTop = targetTile.offsetTop;
     const targetPixelX = tLeft - 10;
     const targetPixelY = tTop - 24;
     
-    // Create marker
-    const marker = document.createElement('div');
-    marker.className = 'player other-player';
-    marker.id = `other-player-${playerId}`;
-    marker.style.left = targetPixelX + 'px';
-    marker.style.top = targetPixelY + 'px';
-    marker.style.zIndex = 500; // Between map and own player
-    marker.style.backgroundImage = `url('assets/player/idle1.png')`;
-    
-    // Add label with name and level
-    const label = document.createElement('div');
-    label.className = 'player-label';
-    label.style.position = 'absolute';
-    label.style.bottom = '-25px';
-    label.style.left = '50%';
-    label.style.transform = 'translateX(-50%)';
-    label.style.whiteSpace = 'nowrap';
-    label.style.fontSize = '12px';
-    label.style.color = '#aaffaa';
-    label.style.textShadow = '0 0 3px #000';
-    label.style.fontWeight = 'bold';
-    label.innerText = `${player.name} (Lvl ${player.level})`;
-    
-    marker.appendChild(label);
-    mapDiv.appendChild(marker);
-    otherPlayerMarkers[playerId] = marker;
+    let marker = otherPlayerMarkers[playerId];
+
+    if (!marker) {
+        // Create new marker
+        marker = document.createElement('div');
+        marker.className = 'player other-player';
+        marker.id = `other-player-${playerId}`;
+        marker.style.left = targetPixelX + 'px';
+        marker.style.top = targetPixelY + 'px';
+        marker.style.zIndex = 500; // Between map and own player
+        marker.style.backgroundImage = `url('assets/player/idle1.png')`;
+        
+        marker.dataset.animState = 'idle';
+        marker.dataset.frameIndex = 0;
+        marker.dataset.lastX = targetPixelX;
+        marker.dataset.lastY = targetPixelY;
+        
+        // Add label with name and level
+        const label = document.createElement('div');
+        label.className = 'player-label';
+        label.style.position = 'absolute';
+        label.style.bottom = '-25px';
+        label.style.left = '50%';
+        label.style.transform = 'translateX(-50%)';
+        label.style.whiteSpace = 'nowrap';
+        label.style.fontSize = '12px';
+        label.style.color = '#aaffaa';
+        label.style.textShadow = '0 0 3px #000';
+        label.style.fontWeight = 'bold';
+        label.innerText = `${player.name} (Lvl ${player.level})`;
+        
+        marker.appendChild(label);
+        mapDiv.appendChild(marker);
+        otherPlayerMarkers[playerId] = marker;
+    } else {
+        marker.style.display = 'block';
+        const label = marker.querySelector('.player-label');
+        if (label) label.innerText = `${player.name} (Lvl ${player.level})`;
+
+        const currentLeft = parseFloat(marker.dataset.lastX);
+        const currentTop = parseFloat(marker.dataset.lastY);
+        const deltaX = targetPixelX - currentLeft;
+        const deltaY = targetPixelY - currentTop;
+        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+        if (distance > 10) {
+            const duration = distance / MOVEMENT_SPEED_PX;
+            if (targetPixelX < currentLeft) marker.style.transform = "scaleX(-1)";
+            else if (targetPixelX > currentLeft) marker.style.transform = "scaleX(1)";
+            
+            marker.style.transition = `top ${duration}s linear, left ${duration}s linear`;
+            marker.style.left = targetPixelX + 'px';
+            marker.style.top = targetPixelY + 'px';
+            marker.dataset.animState = 'run';
+            
+            if (marker.moveTimeout) clearTimeout(marker.moveTimeout);
+            marker.moveTimeout = setTimeout(() => { marker.dataset.animState = 'idle'; }, duration * 1000);
+        } else {
+            marker.style.transition = 'none';
+            marker.style.left = targetPixelX + 'px';
+            marker.style.top = targetPixelY + 'px';
+        }
+        marker.dataset.lastX = targetPixelX;
+        marker.dataset.lastY = targetPixelY;
+    }
 }
 
 function spawnCombatParticles(targetEl, color) {
@@ -977,4 +1121,40 @@ function showToast(message, type = 'info', duration = 3000) {
         toast.style.animation = 'fadeOut 0.5s forwards';
         setTimeout(() => toast.remove(), 500);
     }, duration);
+}
+
+// --- UI SOUNDS ---
+const uiClickSound = new Audio('assets/ui/misc 1.wav');
+function playUiSound() {
+    const sfx = uiClickSound.cloneNode();
+    sfx.volume = sfxVolume;
+    sfx.play().catch(() => {});
+}
+
+document.addEventListener('click', (e) => {
+    if (e.target.closest('button, .class-card, .world-item, .close-x, .char-slot, .tab-btn, .icon-btn, a, input[type="checkbox"]')) {
+        playUiSound();
+    }
+});
+
+function updateDayNightCycle() {
+    const overlay = document.getElementById('day-night-overlay');
+    if (!overlay) return;
+    
+    const hour = new Date().getHours();
+    let color = 'rgba(0, 0, 0, 0)'; // Dzień (domyślnie)
+    let isNight = false;
+
+    if (hour >= 21 || hour < 5) {
+        color = 'rgba(0, 5, 20, 0.6)'; // Noc
+        isNight = true;
+    } else if (hour >= 5 && hour < 8) {
+        color = 'rgba(200, 100, 50, 0.2)'; // Świt
+    } else if (hour >= 17 && hour < 21) {
+        color = 'rgba(80, 40, 100, 0.3)'; // Zmierzch
+    }
+    
+    overlay.style.backgroundColor = color;
+    if (isNight) document.body.classList.add('night-mode');
+    else document.body.classList.remove('night-mode');
 }

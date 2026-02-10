@@ -7,22 +7,6 @@ session_start();
 $input = json_decode(file_get_contents('php://input'), true);
 $action = $input['action'] ?? '';  // <-- ADD THIS LINE
 
-// --- MIGRATION: Ensure last_seen column exists ---
-try {
-    $checkCol = $pdo->query("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'characters' AND COLUMN_NAME = 'last_seen'");
-    if ((int)$checkCol->fetchColumn() === 0) {
-        $pdo->exec("ALTER TABLE characters ADD COLUMN last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
-    }
-    // --- MIGRATION: Duels ---
-    $pdo->exec("CREATE TABLE IF NOT EXISTS duel_requests (id INT AUTO_INCREMENT PRIMARY KEY, challenger_id INT, target_id INT, status VARCHAR(20) DEFAULT 'pending', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
-    $pdo->exec("CREATE TABLE IF NOT EXISTS active_duels (id INT AUTO_INCREMENT PRIMARY KEY, player1_id INT, player2_id INT, current_turn_id INT, combat_state TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
-    try { $pdo->exec("ALTER TABLE characters ADD COLUMN duel_id INT DEFAULT NULL"); } catch(Exception $e){}
-    try { $pdo->exec("ALTER TABLE active_duels ADD COLUMN turn_start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP"); } catch(Exception $e){}
-
-} catch (Exception $e) {
-    // ignore if migration fails
-}
-
 // --- HELPER: Check remembered login via cookie FIRST ---
 if (!isset($_SESSION['user_id']) && isset($_COOKIE['rpg_remember'])) {
     $token = $_COOKIE['rpg_remember'];
@@ -45,16 +29,16 @@ if ($action === 'register_account') {
     $password2 = $input['password2'] ?? '';
     
     if (strlen($username) < 3 || strlen($password) < 3) {
-        echo json_encode(['status' => 'error', 'message' => 'Username i hasło muszą mieć co najmniej 3 znaki.']); exit;
+        echo json_encode(['status' => 'error', 'message' => 'Username and password must be at least 3 characters.']); exit;
     }
     if ($password !== $password2) {
-        echo json_encode(['status' => 'error', 'message' => 'Hasła się nie zgadzają.']); exit;
+        echo json_encode(['status' => 'error', 'message' => 'Passwords do not match.']); exit;
     }
     
     $stmt = $pdo->prepare("SELECT id FROM users WHERE username = ?");
     $stmt->execute([$username]);
     if ($stmt->fetch()) {
-        echo json_encode(['status' => 'error', 'message' => 'Nazwa użytkownika już zajęta.']); exit;
+        echo json_encode(['status' => 'error', 'message' => 'Username already taken.']); exit;
     }
     
     $hashedPwd = password_hash($password, PASSWORD_DEFAULT);
@@ -65,7 +49,7 @@ if ($action === 'register_account') {
         $_SESSION['user_id'] = $newUserId;
         echo json_encode(['status' => 'success', 'user_id' => $newUserId]); exit;
     } catch (PDOException $e) {
-        echo json_encode(['status' => 'error', 'message' => 'Błąd bazy danych.']); exit;
+        echo json_encode(['status' => 'error', 'message' => 'Database error.']); exit;
     }
 }
 
@@ -79,7 +63,7 @@ if ($action === 'login_account') {
     $user = $stmt->fetch();
     
     if (!$user || !password_verify($password, $user['password'])) {
-        echo json_encode(['status' => 'error', 'message' => 'Nieprawidłowa nazwa lub hasło.']); exit;
+        echo json_encode(['status' => 'error', 'message' => 'Invalid username or password.']); exit;
     }
     
     $_SESSION['user_id'] = $user['id'];
@@ -95,6 +79,9 @@ if ($action === 'login_account') {
 }
 
 if ($action === 'logout_account') {
+    if (isset($_SESSION['char_id'])) {
+        $pdo->prepare("UPDATE characters SET last_seen = DATE_SUB(NOW(), INTERVAL 10 MINUTE) WHERE id = ?")->execute([(int)$_SESSION['char_id']]);
+    }
     session_destroy();
     setcookie('rpg_remember', '', time() - 3600, '/');
     echo json_encode(['status' => 'success']); exit;
@@ -110,7 +97,7 @@ if ($action === 'check_remembered_login') {
 
 // --- REQUIRE LOGIN FOR REST ---
 if (!$userId) {
-    echo json_encode(['status' => 'error', 'message' => 'Nie zalogowany']); exit;
+    echo json_encode(['status' => 'error', 'message' => 'Not logged in']); exit;
 }
 
 // Use session character_id if available, otherwise fetch first character
@@ -128,7 +115,7 @@ $stmt->execute([$charId, $userId]);
 $char = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$char && $action !== 'select_class' && $action !== 'get_characters' && $action !== 'create_character' && $action !== 'select_character') {
-    echo json_encode(['status' => 'error', 'message' => 'Brak postaci']); exit;
+    echo json_encode(['status' => 'error', 'message' => 'No character found']); exit;
 }
 
 $STEPS_PER_ENERGY = 10; 
@@ -174,18 +161,21 @@ if ($action === 'select_character') {
     $stmt = $pdo->prepare("SELECT id FROM characters WHERE id = ? AND user_id = ?");
     $stmt->execute([$charIdToSelect, $userId]);
     if (!$stmt->fetch()) {
-        echo json_encode(['status' => 'error', 'message' => 'Postać nie istnieje.']); exit;
+        echo json_encode(['status' => 'error', 'message' => 'Character does not exist.']); exit;
+    }
+    if (isset($_SESSION['char_id'])) {
+        $pdo->prepare("UPDATE characters SET last_seen = DATE_SUB(NOW(), INTERVAL 10 MINUTE) WHERE id = ?")->execute([(int)$_SESSION['char_id']]);
     }
     $_SESSION['char_id'] = $charIdToSelect;
     echo json_encode(['status' => 'success']); exit;
 }
 
 if ($action === 'create_character') {
-    $name = trim($input['name'] ?? '') ?: 'Nowa postać';
+    $name = trim($input['name'] ?? '') ?: 'New character';
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM characters WHERE user_id = ?");
     $stmt->execute([$userId]);
     if ($stmt->fetchColumn() >= 3) {
-        echo json_encode(['status' => 'error', 'message' => 'Maksymalnie 3 postacie.']); exit;
+        echo json_encode(['status' => 'error', 'message' => 'Maximum 3 characters.']); exit;
     }
     
     try {
@@ -193,10 +183,13 @@ if ($action === 'create_character') {
         $stmt->execute([$userId, $name]);
         $newCharId = $pdo->lastInsertId();
         // Auto-select the new character
+        if (isset($_SESSION['char_id'])) {
+            $pdo->prepare("UPDATE characters SET last_seen = DATE_SUB(NOW(), INTERVAL 10 MINUTE) WHERE id = ?")->execute([(int)$_SESSION['char_id']]);
+        }
         $_SESSION['char_id'] = $newCharId;
         echo json_encode(['status' => 'success', 'character_id' => $newCharId]); exit;
     } catch (PDOException $e) {
-        echo json_encode(['status' => 'error', 'message' => 'Błąd bazy danych.']); exit;
+        echo json_encode(['status' => 'error', 'message' => 'Database error.']); exit;
     }
 }
 
@@ -206,9 +199,9 @@ if ($action === 'delete_character') {
     $stmt = $pdo->prepare("SELECT id, in_combat FROM characters WHERE id = ? AND user_id = ?");
     $stmt->execute([$targetId, $userId]);
     $row = $stmt->fetch();
-    if (!$row) { echo json_encode(['status' => 'error', 'message' => 'Brak dostępu.']); exit; }
+    if (!$row) { echo json_encode(['status' => 'error', 'message' => 'Access denied.']); exit; }
     
-    if ($row['in_combat']) { echo json_encode(['status' => 'error', 'message' => 'Nie można usunąć postaci w trakcie walki!']); exit; }
+    if ($row['in_combat']) { echo json_encode(['status' => 'error', 'message' => 'Cannot delete character during combat!']); exit; }
     
     $pdo->prepare("DELETE FROM inventory WHERE character_id = ?")->execute([$targetId]);
     $pdo->prepare("DELETE FROM saved_positions WHERE character_id = ?")->execute([$targetId]);
@@ -254,14 +247,14 @@ if ($action === 'join_world') {
     $stmt = $pdo->prepare("SELECT id FROM worlds WHERE id = ?");
     $stmt->execute([$targetWorldId]);
     if (!$stmt->fetch()) {
-        echo json_encode(['status' => 'error', 'message' => 'Świat nie istnieje.']); exit;
+        echo json_encode(['status' => 'error', 'message' => 'World does not exist.']); exit;
     }
 
     // Check player limit (20)
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM characters WHERE world_id = ?");
     $stmt->execute([$targetWorldId]);
     if ($stmt->fetchColumn() >= 20) {
-        echo json_encode(['status' => 'error', 'message' => 'Świat jest pełny (20/20).']); exit;
+        echo json_encode(['status' => 'error', 'message' => 'World is full (20/20).']); exit;
     }
 
     $curWorldId = (int)($char['world_id'] ?? 0);
@@ -277,7 +270,7 @@ if ($action === 'join_world') {
         $tileStmt->execute([$posX, $posY, $curWorldId]);
         $curTile = $tileStmt->fetch(PDO::FETCH_ASSOC);
         if (!$curTile || strpos($curTile['type'], 'city') === false) {
-            echo json_encode(['status' => 'error', 'message' => 'Musisz być w mieście lub wiosce, by zmienić świat.']); exit;
+            echo json_encode(['status' => 'error', 'message' => 'You must be in a city or village to change worlds.']); exit;
         }
     }
 
@@ -307,7 +300,7 @@ if ($action === 'select_class') {
     $pdo->prepare("UPDATE characters SET class_id = ?, hp = ?, max_hp = ?, energy = ?, max_energy = ?, world_id = 1, tutorial_completed = 0 WHERE id = ?")
         ->execute([$classId, $cls['base_hp'], $cls['base_hp'], $cls['base_energy'], $cls['base_energy'], $charId]);
     
-    $pdo->prepare("DELETE FROM inventory WHERE character_id = ?")->execute([$charId]);
+    $pdo->prepare("DELETE FROM inventory WHERE character_id = ?")->execute([$charId]); // Clear inventory
     $weaponId = $classId; $armorId = ($classId==1)?5:($classId==2?6:4);
     $pdo->prepare("INSERT INTO inventory (character_id, item_id, is_equipped) VALUES (?, ?, 1), (?, ?, 1)")->execute([$charId, $weaponId, $charId, $armorId]);
     $pdo->prepare("INSERT INTO inventory (character_id, item_id, quantity) VALUES (?, 7, 3), (?, 8, 3)")->execute([$charId, $charId]);
@@ -323,7 +316,7 @@ if ($action === 'get_state') {
         // ignore if column missing
     }
 
-    $invStmt = $pdo->prepare("SELECT i.id as item_id, i.name, i.type, i.power, i.icon, inv.quantity, inv.is_equipped FROM inventory inv JOIN items i ON inv.item_id = i.id WHERE inv.character_id = ?");
+    $invStmt = $pdo->prepare("SELECT i.id as item_id, i.name, i.type, i.power, i.icon, i.description, i.price, i.rarity, inv.quantity, inv.is_equipped FROM inventory inv JOIN items i ON inv.item_id = i.id WHERE inv.character_id = ?");
     $invStmt->execute([$charId]);
     $inventory = $invStmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -383,13 +376,13 @@ if ($action === 'get_map') {
 if ($action === 'move') {
     $targetX = (int)$input['x']; $targetY = (int)$input['y'];
 
-    if ($char['hp'] <= 0) { echo json_encode(['status' => 'dead', 'message' => 'Jesteś martwy.']); exit; }
-    if ($char['in_combat']) { echo json_encode(['status' => 'error', 'message' => 'Jesteś w walce!']); exit; }
+    if ($char['hp'] <= 0) { echo json_encode(['status' => 'dead', 'message' => 'You are dead.']); exit; }
+    if ($char['in_combat']) { echo json_encode(['status' => 'error', 'message' => 'You are in combat!']); exit; }
 
     $currentSpeed = ($char['energy'] > 0) ? $MAX_SPEED_NORMAL : $MAX_SPEED_EXHAUSTED;
     $dist = getGameDistance($char['pos_x'], $char['pos_y'], $targetX, $targetY);
     
-    if ($dist > $currentSpeed) { echo json_encode(['status' => 'error', 'message' => 'Za daleko!']); exit; }
+    if ($dist > $currentSpeed) { echo json_encode(['status' => 'error', 'message' => 'Too far!']); exit; }
 
     
     $tileStmt = $pdo->prepare("SELECT type FROM map_tiles WHERE x = ? AND y = ? AND world_id = ?");
@@ -397,15 +390,16 @@ if ($action === 'move') {
     $targetTile = $tileStmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$targetTile || $targetTile['type'] === 'water' || $targetTile['type'] === 'mountain') {
-        echo json_encode(['status' => 'error', 'message' => 'Teren niedostępny!']); exit;
+        echo json_encode(['status' => 'error', 'message' => 'Terrain inaccessible!']); exit;
     }
 
     $isSafe = (strpos($targetTile['type'], 'city') !== false);
-    $encounter = false; $enemyHp = 0; $msg = "Podróżujesz...";
+    $encounter = false; $enemyHp = 0; $msg = "Traveling...";
 
     if ($isSafe) {
-        $char['hp'] = $char['max_hp']; $char['energy'] = $char['max_energy']; $char['steps_buffer'] = 0;
-        $msg = "Odpoczywasz w mieście.";
+        // Economy Update: Cities only heal up to 50%
+        $char['hp'] = max($char['hp'], floor($char['max_hp'] * 0.5)); $char['energy'] = $char['max_energy']; $char['steps_buffer'] = 0;
+        $msg = "Resting in the city.";
     } else {
         $char['steps_buffer'] += $dist;
         while ($char['steps_buffer'] >= $STEPS_PER_ENERGY) {
@@ -420,7 +414,42 @@ if ($action === 'move') {
 
         if (rand(1, 100) <= $chance) { 
             $encounter = true;
-            $enemyHp = rand(30, 60);
+            
+            // Monster Types Logic
+            $weightedTypes = ['standard' => 20];
+            if ($char['level'] >= 2) $weightedTypes['green'] = 30;
+            if ($char['level'] >= 3) $weightedTypes['yellow'] = 60;
+            if ($char['level'] >= 5) $weightedTypes['orange'] = 70;
+            if ($char['level'] >= 7) $weightedTypes['red'] = 60;
+            
+            $rand = mt_rand(1, array_sum($weightedTypes));
+            $cur = 0;
+            $type = 'standard';
+            foreach ($weightedTypes as $k => $w) {
+                $cur += $w;
+                if ($rand <= $cur) { $type = $k; break; }
+            }
+            $hpMult = 1.0; $dmgMult = 1.0; $heals = 0;
+            $levelOffset = 0;
+            $namesMap = [
+                'standard' => 'Rat',
+                'green' => 'Leaf Goblin',
+                'yellow' => 'Desert Bandit',
+                'orange' => 'Lava Golem',
+                'red' => 'Blood Demon'
+            ];
+            $enemyName = $namesMap[$type] ?? 'Monster';
+            
+            if ($type === 'standard') { $levelOffset = rand(-1, 2); }
+            elseif ($type === 'green') { $levelOffset = rand(-2, 0); $heals = 1; }
+            elseif ($type === 'yellow') { $levelOffset = rand(-3, -1); $hpMult = 1.2; $dmgMult = 1.2; $heals = 2; }
+            elseif ($type === 'orange') { $levelOffset = rand(-4, -2); $hpMult = 1.5; $dmgMult = 1.5; }
+            elseif ($type === 'red') { $levelOffset = rand(-5, -3); $hpMult = 2.0; $dmgMult = 2.0; }
+            
+            $enemyLevel = max(1, $char['level'] + $levelOffset);
+            $levelMult = 1 + ($enemyLevel * 0.10); // 10% stats per level
+            
+            $enemyHp = (int)(rand(30, 60) * $hpMult * $levelMult);
             
             $arenaTiles = [];
             for ($ay = 0; $ay < 5; $ay++) {
@@ -441,12 +470,17 @@ if ($action === 'move') {
                 'turn' => 'player',
                 'player_ap' => 2,
                 'enemy_ap' => 2,
-                'is_defending' => false
+                'is_defending' => false,
+                'enemy_type' => $type,
+                'enemy_name' => $enemyName,
+                'enemy_level' => $enemyLevel,
+                'enemy_dmg_mult' => $dmgMult,
+                'enemy_heals' => $heals
             ];
             
             $pdo->prepare("UPDATE characters SET in_combat = 1, enemy_hp = ?, enemy_max_hp = ?, pos_x = ?, pos_y = ?, energy = ?, steps_buffer = ?, combat_state = ? WHERE id = ?")
                 ->execute([$enemyHp, $enemyHp, $targetX, $targetY, $char['energy'], $char['steps_buffer'], json_encode($combatState), $charId]);
-            $msg = "⚔️ ZASADZKA!";
+            $msg = "⚔️ AMBUSH!";
         }
     }
 
@@ -466,7 +500,7 @@ if ($action === 'move') {
         $pdo->prepare("INSERT INTO saved_positions (character_id, world_id, pos_x, pos_y) VALUES (?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE pos_x = VALUES(pos_x), pos_y = VALUES(pos_y)")
             ->execute([$charId, (int)$char['world_id'], $targetX, $targetY]);
-        $msg = "⚔️ ZASADZKA!";
+        $msg = "⚔️ AMBUSH!";
     }
 
     // Fetch new local map tiles for Fog of War update
@@ -506,23 +540,23 @@ if ($action === 'respawn') {
 
 if ($action === 'send_duel_request') {
     $targetId = (int)$input['target_id'];
-    if ($targetId == $charId) { echo json_encode(['status' => 'error', 'message' => 'Nie możesz walczyć sam ze sobą.']); exit; }
+    if ($targetId == $charId) { echo json_encode(['status' => 'error', 'message' => 'You cannot fight yourself.']); exit; }
     
     // Check distance
     $stmt = $pdo->prepare("SELECT pos_x, pos_y, in_combat, duel_id FROM characters WHERE id = ?");
     $stmt->execute([$targetId]);
     $target = $stmt->fetch();
     
-    if (!$target) { echo json_encode(['status' => 'error', 'message' => 'Gracz nie istnieje.']); exit; }
-    if ($target['in_combat'] || $target['duel_id']) { echo json_encode(['status' => 'error', 'message' => 'Gracz jest zajęty walką.']); exit; }
+    if (!$target) { echo json_encode(['status' => 'error', 'message' => 'Player does not exist.']); exit; }
+    if ($target['in_combat'] || $target['duel_id']) { echo json_encode(['status' => 'error', 'message' => 'Player is busy fighting.']); exit; }
     
     $dist = getGameDistance($char['pos_x'], $char['pos_y'], $target['pos_x'], $target['pos_y']);
-    if ($dist > 5) { echo json_encode(['status' => 'error', 'message' => 'Za daleko!']); exit; }
+    if ($dist > 5) { echo json_encode(['status' => 'error', 'message' => 'Too far!']); exit; }
     
     // Check existing requests
     $stmt = $pdo->prepare("SELECT id FROM duel_requests WHERE challenger_id = ? AND target_id = ? AND status = 'pending'");
     $stmt->execute([$charId, $targetId]);
-    if ($stmt->fetch()) { echo json_encode(['status' => 'error', 'message' => 'Już wysłałeś wyzwanie.']); exit; }
+    if ($stmt->fetch()) { echo json_encode(['status' => 'error', 'message' => 'Challenge already sent.']); exit; }
     
     $pdo->prepare("INSERT INTO duel_requests (challenger_id, target_id) VALUES (?, ?)")->execute([$charId, $targetId]);
     echo json_encode(['status' => 'success', 'message' => 'Wyzwanie wysłane!']); exit;
@@ -536,7 +570,7 @@ if ($action === 'respond_duel_request') {
     $stmt->execute([$reqId, $charId]);
     $req = $stmt->fetch();
     
-    if (!$req) { echo json_encode(['status' => 'error', 'message' => 'Wyzwanie nieaktualne.']); exit; }
+    if (!$req) { echo json_encode(['status' => 'error', 'message' => 'Challenge expired.']); exit; }
     
     if ($response === 'reject') {
         $pdo->prepare("UPDATE duel_requests SET status = 'rejected' WHERE id = ?")->execute([$reqId]);
@@ -546,6 +580,11 @@ if ($action === 'respond_duel_request') {
     if ($response === 'accept') {
         // Initialize Duel
         $challengerId = $req['challenger_id'];
+        
+        // Check if challenger is online (fix for "offline" issue)
+        $stmt = $pdo->prepare("SELECT id FROM characters WHERE id = ? AND last_seen > DATE_SUB(NOW(), INTERVAL 2 MINUTE)");
+        $stmt->execute([$challengerId]);
+        if (!$stmt->fetch()) { echo json_encode(['status' => 'error', 'message' => 'Player is offline.']); exit; }
         
         // Create Arena
         $arenaTiles = [];
@@ -559,14 +598,14 @@ if ($action === 'respond_duel_request') {
             'p1_pos' => ['x' => 1, 'y' => 2], // Challenger
             'p2_pos' => ['x' => 5, 'y' => 2], // Target (You)
             'tiles' => $arenaTiles,
-            'turn_id' => $challengerId, // Challenger starts
-            'p1_ap' => 2,
+            'p1_ap' => 0,
             'p2_ap' => 2,
-            'log' => 'Pojedynek rozpoczęty!'
+            'turn_id' => $charId, // Acceptor starts
+            'log' => 'Duel started! Starts: ' . $char['name']
         ];
         
         $pdo->prepare("INSERT INTO active_duels (player1_id, player2_id, current_turn_id, combat_state, turn_start_time) VALUES (?, ?, ?, ?, NOW())")
-            ->execute([$challengerId, $charId, $challengerId, json_encode($combatState)]);
+            ->execute([$challengerId, $charId, $charId, json_encode($combatState)]);
         $duelId = $pdo->lastInsertId();
         
         // Update both players
@@ -580,7 +619,7 @@ if ($action === 'respond_duel_request') {
 }
 
 if ($action === 'get_duel_state') {
-    if (!$char['duel_id']) { echo json_encode(['status' => 'ended']); exit; }
+    if (!$char['duel_id']) { echo json_encode(['status' => 'ended', 'hp' => (int)$char['hp']]); exit; }
     
     // Update my last_seen so opponent knows I'm here
     $pdo->prepare("UPDATE characters SET last_seen = NOW() WHERE id = ?")->execute([$charId]);
@@ -602,16 +641,17 @@ if ($action === 'get_duel_state') {
     
     // 1. Check for Opponent Disconnect (40s timeout)
     $oppId = ($charId == $duel['player1_id']) ? $duel['player2_id'] : $duel['player1_id'];
-    $stmt = $pdo->prepare("SELECT last_seen FROM characters WHERE id = ?");
+    // Use SQL to compare times to avoid PHP/DB timezone mismatch
+    $stmt = $pdo->prepare("SELECT TIMESTAMPDIFF(SECOND, last_seen, NOW()) FROM characters WHERE id = ?");
     $stmt->execute([$oppId]);
-    $oppLast = $stmt->fetchColumn();
+    $secondsSinceLastSeen = (int)$stmt->fetchColumn();
     
-    if (time() - strtotime($oppLast) > 40) {
+    if ($secondsSinceLastSeen > 40) {
         // End duel due to disconnect
         $pdo->prepare("DELETE FROM active_duels WHERE id = ?")->execute([$duel['id']]);
         $pdo->prepare("UPDATE characters SET duel_id = NULL, in_combat = 0 WHERE id = ?")->execute([$duel['player1_id']]);
         $pdo->prepare("UPDATE characters SET duel_id = NULL, in_combat = 0 WHERE id = ?")->execute([$duel['player2_id']]);
-        echo json_encode(['status' => 'ended', 'message' => 'Przeciwnik rozłączony!']); exit;
+        echo json_encode(['status' => 'ended', 'message' => 'Opponent disconnected!']); exit;
     }
 
     // 2. Check Turn Timer (30s limit)
@@ -626,7 +666,7 @@ if ($action === 'get_duel_state') {
         $isP1Next = ($nextTurnId == $duel['player1_id']);
         $state['p1_ap'] = $isP1Next ? 2 : 0;
         $state['p2_ap'] = $isP1Next ? 0 : 2;
-        $state['log'] = "Czas minął! Zmiana tury.";
+        $state['log'] = "Time's up! Turn switch.";
         
         $pdo->prepare("UPDATE active_duels SET current_turn_id = ?, combat_state = ?, turn_start_time = NOW() WHERE id = ?")
             ->execute([$nextTurnId, json_encode($state), $duel['id']]);
@@ -673,13 +713,13 @@ if ($action === 'get_duel_state') {
 
 if ($action === 'pvp_action') {
     $subAction = $input['sub_action']; // move, attack
-    if (!$char['duel_id']) { echo json_encode(['status' => 'error', 'message' => 'Brak pojedynku']); exit; }
+    if (!$char['duel_id']) { echo json_encode(['status' => 'error', 'message' => 'No duel active']); exit; }
     
     $stmt = $pdo->prepare("SELECT * FROM active_duels WHERE id = ?");
     $stmt->execute([$char['duel_id']]);
     $duel = $stmt->fetch(PDO::FETCH_ASSOC);
     
-    if ($duel['current_turn_id'] != $charId) { echo json_encode(['status' => 'error', 'message' => 'Nie twoja tura!']); exit; }
+    if ($duel['current_turn_id'] != $charId) { echo json_encode(['status' => 'error', 'message' => 'Not your turn!']); exit; }
     
     $state = json_decode($duel['combat_state'], true);
     $isP1 = ($charId == $duel['player1_id']);
@@ -692,19 +732,19 @@ if ($action === 'pvp_action') {
         $enPos = $state[$enKey.'_pos'];
         
         $dist = getGameDistance($myPos['x'], $myPos['y'], $tx, $ty);
-        if ($dist > 2.2) { echo json_encode(['status' => 'error', 'message' => 'Za daleko']); exit; }
-        if ($state[$myKey.'_ap'] < ceil($dist)) { echo json_encode(['status' => 'error', 'message' => 'Brak AP']); exit; }
-        if ($tx == $enPos['x'] && $ty == $enPos['y']) { echo json_encode(['status' => 'error', 'message' => 'Zajęte']); exit; }
+        if ($dist > 2.2) { echo json_encode(['status' => 'error', 'message' => 'Too far']); exit; }
+        if ($state[$myKey.'_ap'] < ceil($dist)) { echo json_encode(['status' => 'error', 'message' => 'Not enough AP']); exit; }
+        if ($tx == $enPos['x'] && $ty == $enPos['y']) { echo json_encode(['status' => 'error', 'message' => 'Occupied']); exit; }
         
         $state[$myKey.'_pos'] = ['x' => $tx, 'y' => $ty];
         $state[$myKey.'_ap'] -= ceil($dist);
     }
     
     if ($subAction === 'attack') {
-        if ($state[$myKey.'_ap'] < 2) { echo json_encode(['status' => 'error', 'message' => 'Brak AP']); exit; }
+        if ($state[$myKey.'_ap'] < 2) { echo json_encode(['status' => 'error', 'message' => 'Not enough AP']); exit; }
         $myPos = $state[$myKey.'_pos']; $enPos = $state[$enKey.'_pos'];
         $dist = getGameDistance($myPos['x'], $myPos['y'], $enPos['x'], $enPos['y']);
-        if ($dist > 2.2) { echo json_encode(['status' => 'error', 'message' => 'Za daleko']); exit; }
+        if ($dist > 2.2) { echo json_encode(['status' => 'error', 'message' => 'Too far']); exit; }
         
         $dmg = rand(10, 15) + $char['base_attack'];
         $enemyId = $isP1 ? $duel['player2_id'] : $duel['player1_id'];
@@ -720,11 +760,11 @@ if ($action === 'pvp_action') {
             $pdo->prepare("UPDATE characters SET hp = 0, duel_id = NULL, in_combat = 0 WHERE id = ?")->execute([$enemyId]);
             $pdo->prepare("UPDATE characters SET duel_id = NULL, in_combat = 0 WHERE id = ?")->execute([$charId]);
             $pdo->prepare("DELETE FROM active_duels WHERE id = ?")->execute([$duel['id']]);
-            echo json_encode(['status' => 'success', 'dmg' => $dmg, 'win' => true, 'log' => "Pokonałeś gracza " . $enemy['name'] . "!"]); exit;
+            echo json_encode(['status' => 'success', 'dmg' => $dmg, 'win' => true, 'log' => "You defeated player " . $enemy['name'] . "!"]); exit;
         } else {
             $pdo->prepare("UPDATE characters SET hp = ? WHERE id = ?")->execute([$newHp, $enemyId]);
             $state[$myKey.'_ap'] = 0;
-            $state['log'] = "Gracz " . $char['name'] . " zadaje $dmg obrażeń!";
+            $state['log'] = "Player " . $char['name'] . " deals $dmg damage!";
         }
     }
     
@@ -749,21 +789,21 @@ if ($action === 'pvp_action') {
 if ($action === 'combat_move') {
     $tx = (int)$input['x']; $ty = (int)$input['y'];
     $cState = json_decode($char['combat_state'], true);
-    if ($cState['turn'] !== 'player') { echo json_encode(['status' => 'error', 'message' => 'Tura przeciwnika!']); exit; }
-    if ($cState['player_ap'] < 1) { echo json_encode(['status' => 'error', 'message' => 'Brak AP!']); exit; }
+    if ($cState['turn'] !== 'player') { echo json_encode(['status' => 'error', 'message' => 'Enemy turn!']); exit; }
+    if ($cState['player_ap'] < 1) { echo json_encode(['status' => 'error', 'message' => 'Not enough AP!']); exit; }
 
     $tileType = 'water';
     foreach ($cState['tiles'] as $t) { if ($t['x'] == $tx && $t['y'] == $ty) { $tileType = $t['type']; break; } }
-    if ($tileType === 'water') { echo json_encode(['status' => 'error', 'message' => 'Woda!']); exit; }
-    if ($tx == $cState['enemy_pos']['x'] && $ty == $cState['enemy_pos']['y']) { echo json_encode(['status' => 'error', 'message' => 'Tam stoi wróg!']); exit; }
+    if ($tileType === 'water') { echo json_encode(['status' => 'error', 'message' => 'Water!']); exit; }
+    if ($tx == $cState['enemy_pos']['x'] && $ty == $cState['enemy_pos']['y']) { echo json_encode(['status' => 'error', 'message' => 'Enemy is there!']); exit; }
     
     $moveDist = getGameDistance($cState['player_pos']['x'], $cState['player_pos']['y'], $tx, $ty);
     $isHorizontal = ($cState['player_pos']['y'] == $ty);
     $maxDist = $isHorizontal ? 2.2 : 1.1;
-    if ($moveDist > $maxDist) { echo json_encode(['status' => 'error', 'message' => 'Za daleko.']); exit; }
+    if ($moveDist > $maxDist) { echo json_encode(['status' => 'error', 'message' => 'Too far.']); exit; }
     
     $apCost = (int)ceil($moveDist);
-    if ($cState['player_ap'] < $apCost) { echo json_encode(['status' => 'error', 'message' => 'Brak AP!']); exit; }
+    if ($cState['player_ap'] < $apCost) { echo json_encode(['status' => 'error', 'message' => 'Not enough AP!']); exit; }
     
     $cState['player_ap'] -= $apCost;
     $cState['player_pos'] = ['x' => $tx, 'y' => $ty];
@@ -775,22 +815,22 @@ if ($action === 'combat_move') {
 
 if ($action === 'combat_defend') {
     $cState = json_decode($char['combat_state'], true);
-    if ($cState['turn'] !== 'player') { echo json_encode(['status' => 'error', 'message' => 'Tura przeciwnika!']); exit; }
-    if ($cState['player_ap'] < 1) { echo json_encode(['status' => 'error', 'message' => 'Brak AP!']); exit; }
+    if ($cState['turn'] !== 'player') { echo json_encode(['status' => 'error', 'message' => 'Enemy turn!']); exit; }
+    if ($cState['player_ap'] < 1) { echo json_encode(['status' => 'error', 'message' => 'Not enough AP!']); exit; }
     $cState['player_ap'] -= 1;
     $cState['is_defending'] = true; 
     if ($cState['player_ap'] <= 0) { $cState['turn'] = 'enemy'; $cState['enemy_ap'] = 2; }
     $pdo->prepare("UPDATE characters SET combat_state = ? WHERE id = ?")->execute([json_encode($cState), $charId]);
-    echo json_encode(['status' => 'success', 'combat_state' => $cState, 'message' => '🛡️ Postawa obronna! (-50% obrażeń)']); exit;
+    echo json_encode(['status' => 'success', 'combat_state' => $cState, 'message' => '🛡️ Defensive stance! (-50% damage)']); exit;
 }
 
 if ($action === 'combat_attack') {
     $cState = json_decode($char['combat_state'], true);
-    if ($cState['player_ap'] < 2) { echo json_encode(['status' => 'error', 'message' => 'Atak wymaga 2 AP!']); exit; }
+    if ($cState['player_ap'] < 2) { echo json_encode(['status' => 'error', 'message' => 'Attack requires 2 AP!']); exit; }
     $dist = getGameDistance($cState['player_pos']['x'], $cState['player_pos']['y'], $cState['enemy_pos']['x'], $cState['enemy_pos']['y']);
     $isHorizontal = ($cState['player_pos']['y'] == $cState['enemy_pos']['y']);
     $maxDist = $isHorizontal ? 2.2 : 1.1;
-    if ($dist > $maxDist) { echo json_encode(['status' => 'error', 'message' => 'Wróg za daleko!']); exit;
+    if ($dist > $maxDist) { echo json_encode(['status' => 'error', 'message' => 'Enemy too far!']); exit;
     }
     
     $invStmt = $pdo->prepare("SELECT items.power FROM inventory JOIN items ON inventory.item_id = items.id WHERE character_id = ? AND is_equipped = 1 AND items.type = 'weapon'");
@@ -801,27 +841,61 @@ if ($action === 'combat_attack') {
     $char['enemy_hp'] -= $dmg;
     $cState['player_ap'] = 0; 
     
-    $log = "Zadajesz $dmg obrażeń!";
+    $log = "You deal $dmg damage!";
     $win = false;
     $tutorialFinishedNow = false;
+    $xp = 0; $goldReward = 0; $dropItem = null;
     
     if ($char['enemy_hp'] <= 0) {
         $win = true; $xp = rand(15, 25);
-        $char['xp'] += $xp; $char['in_combat'] = 0; $char['combat_state'] = NULL;
+        
+        // --- DROPS LOGIC ---
+        $cState = json_decode($char['combat_state'], true);
+        $enemyType = $cState['enemy_type'] ?? 'standard';
+        $enemyLevel = $cState['enemy_level'] ?? 1;
+        
+        // Gold Formula: 1-10 * (1 + level/10)
+        $baseGold = rand(1, 10);
+        $goldReward = (int)floor($baseGold * (1 + $enemyLevel / 10));
+        
+        $dropId = 0;
+        $dropChance = 0;
+        
+        if ($enemyType === 'standard') { $dropId = 20; $dropChance = 50; } // Rat Tail
+        elseif ($enemyType === 'green') { $dropId = 21; $dropChance = 45; } // Goblin Ear
+        elseif ($enemyType === 'yellow') { $dropId = 22; $dropChance = 40; } // Bandit Insignia
+        elseif ($enemyType === 'orange') { $dropId = 23; $dropChance = 35; } // Lava Core
+        elseif ($enemyType === 'red') { $dropId = 24; $dropChance = 30; } // Demon Horn
+        
+        if ($dropId > 0 && rand(1, 100) <= $dropChance) {
+            $pdo->prepare("INSERT INTO inventory (character_id, item_id, quantity) VALUES (?, ?, 1) ON DUPLICATE KEY UPDATE quantity = quantity + 1")->execute([$charId, $dropId]);
+            $stmt = $pdo->prepare("SELECT name FROM items WHERE id = ?"); $stmt->execute([$dropId]);
+            $dropItem = $stmt->fetchColumn();
+            $log .= " Found loot: $dropItem!";
+        }
+        
+        $char['xp'] += $xp; 
+        $char['gold'] += $goldReward;
+        $char['in_combat'] = 0; 
+        $char['combat_state'] = NULL;
+        
+        $log .= " (+$xp XP, +$goldReward Gold)";
         
         // --- SPRAWDZENIE UKOŃCZENIA TUTORIALU ---
         if ($char['world_id'] == 1 && $char['tutorial_completed'] == 0) {
+            $char['gold'] += 50; // Bonus gold for tutorial
             $pdo->prepare("UPDATE characters SET tutorial_completed = 1 WHERE id = ?")->execute([$charId]);
             $char['tutorial_completed'] = 1;
             $tutorialFinishedNow = true;
-            $log .= " WYGRANA! Ukończyłeś Tutorial!";
+            $log .= " VICTORY! Tutorial Completed!";
         } else {
             if ($char['xp'] >= $char['max_xp']) {
                 $char['level']++; $char['xp'] = 0; $char['max_xp'] *= 1.2;
-                $char['max_hp'] += 10; $char['hp'] = $char['max_hp'];
-                $log .= " WYGRANA! AWANS!";
+                $char['hp'] = $char['max_hp'];
+                $char['stat_points'] += 3; // Grant 3 stat points
+                $log .= " VICTORY! LEVEL UP!";
             } else {
-                $log .= " WYGRANA!";
+                $log .= " VICTORY!";
             }
         }
     } else {
@@ -829,8 +903,8 @@ if ($action === 'combat_attack') {
         $cState['enemy_ap'] = 2;
     }
     
-    $pdo->prepare("UPDATE characters SET hp=?, enemy_hp=?, xp=?, max_xp=?, level=?, max_hp=?, in_combat=?, combat_state=? WHERE id=?")
-        ->execute([$char['hp'], max(0,$char['enemy_hp']), $char['xp'], $char['max_xp'], $char['level'], $char['max_hp'], $char['in_combat'], json_encode($cState), $charId]);
+    $pdo->prepare("UPDATE characters SET hp=?, enemy_hp=?, xp=?, max_xp=?, level=?, max_hp=?, stat_points=?, gold=?, in_combat=?, combat_state=? WHERE id=?")
+        ->execute([$char['hp'], max(0,$char['enemy_hp']), $char['xp'], $char['max_xp'], $char['level'], $char['max_hp'], $char['stat_points'], $char['gold'], $char['in_combat'], json_encode($cState), $charId]);
         
     
     echo json_encode([
@@ -839,48 +913,103 @@ if ($action === 'combat_attack') {
         'dmg_dealt' => $dmg,
         'win' => $win, 
         'log' => $log, 
+        'gold' => $char['gold'],
         'combat_state' => $cState,
-        'tutorial_finished' => $tutorialFinishedNow
+        'tutorial_finished' => $tutorialFinishedNow,
+        'xp_gain' => $xp,
+        'gold_gain' => $goldReward,
+        'loot' => $dropItem
     ]); exit;
 }
 
 if ($action === 'combat_use_item') {
-    $itemId = (int)$input['item_id'];
+    $itemId = (int)$input['item_id']; // This is ITEM ID from items table
     $stmt = $pdo->prepare("SELECT inventory.id, items.power, inventory.quantity FROM inventory JOIN items ON inventory.item_id = items.id WHERE character_id = ? AND items.id = ?");
     $stmt->execute([$charId, $itemId]);
     $item = $stmt->fetch(PDO::FETCH_ASSOC);
-    if (!$item || $item['quantity'] < 1) { echo json_encode(['status' => 'error', 'message' => 'Brak przedmiotu!']); exit; }
+    if (!$item || $item['quantity'] < 1) { echo json_encode(['status' => 'error', 'message' => 'Item missing!']); exit; }
     
     $heal = $item['power'];
     $char['hp'] = min($char['max_hp'], $char['hp'] + $heal);
-    if ($item['quantity'] > 1) { $pdo->prepare("UPDATE inventory SET quantity = quantity - 1 WHERE id = ?")->execute([$item['id']]); } 
+    
+    // Use inventory ID for deletion/update
+    if ($item['quantity'] > 1) { 
+        $pdo->prepare("UPDATE inventory SET quantity = quantity - 1 WHERE id = ?")->execute([$item['id']]); 
+    } 
     else { $pdo->prepare("DELETE FROM inventory WHERE id = ?")->execute([$item['id']]); }
     
     $cState = json_decode($char['combat_state'], true);
     $cState['player_ap'] = 0; $cState['turn'] = 'enemy'; $cState['enemy_ap'] = 2;
 
     $pdo->prepare("UPDATE characters SET hp = ?, combat_state = ? WHERE id = ?")->execute([$char['hp'], json_encode($cState), $charId]);
-    echo json_encode(['status' => 'success', 'hp' => $char['hp'], 'combat_state' => $cState, 'message' => "Uleczono o $heal HP. Tura wroga."]); exit;
+    echo json_encode(['status' => 'success', 'hp' => $char['hp'], 'combat_state' => $cState, 'message' => "Healed for $heal HP. Enemy turn."]); exit;
+}
+
+// --- OUT OF COMBAT ITEM USAGE ---
+if ($action === 'use_item') {
+    $itemId = (int)$input['item_id'];
+    if ($char['in_combat']) { echo json_encode(['status' => 'error', 'message' => 'Use combat actions!']); exit; }
+
+    // Check if item is consumable (potion/bandage)
+    // Assuming ID 7 = Bandage (Power 20), ID 8 = Potion (Power 50)
+    // Or check item type if we had a 'consumable' type. For now, ID check or type check.
+    
+    $stmt = $pdo->prepare("SELECT inventory.id, items.power, items.type, inventory.quantity FROM inventory JOIN items ON inventory.item_id = items.id WHERE character_id = ? AND items.id = ?");
+    $stmt->execute([$charId, $itemId]);
+    $item = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$item || $item['quantity'] < 1) { echo json_encode(['status' => 'error', 'message' => 'Item not found']); exit; }
+    if ($item['id'] != 7 && $item['id'] != 8 && $item['type'] !== 'consumable') { echo json_encode(['status' => 'error', 'message' => 'Cannot use this item here.']); exit; }
+
+    $heal = ($item['id'] == 7) ? 20 : (($item['id'] == 8) ? 50 : $item['power']);
+    $char['hp'] = min($char['max_hp'], $char['hp'] + $heal);
+
+    if ($item['quantity'] > 1) { $pdo->prepare("UPDATE inventory SET quantity = quantity - 1 WHERE id = ?")->execute([$item['id']]); } 
+    else { $pdo->prepare("DELETE FROM inventory WHERE id = ?")->execute([$item['id']]); }
+
+    $pdo->prepare("UPDATE characters SET hp = ? WHERE id = ?")->execute([$char['hp'], $charId]);
+    echo json_encode(['status' => 'success', 'hp' => $char['hp'], 'message' => "Healed for $heal HP."]); exit;
 }
 
 if ($action === 'enemy_turn') {
     $cState = json_decode($char['combat_state'], true);
     if ($cState['turn'] !== 'enemy') { echo json_encode(['status' => 'error']); exit; }
+    
+    $type = $cState['enemy_type'] ?? 'standard';
+    $name = $cState['enemy_name'] ?? 'Enemy';
+    $enemyLevel = $cState['enemy_level'] ?? 1;
+    $dmgMult = $cState['enemy_dmg_mult'] ?? 1.0;
+    $heals = $cState['enemy_heals'] ?? 0;
+    $levelMult = 1 + ($enemyLevel * 0.10);
+    
     $log = ""; $actions_performed = []; 
     
-    while ($cState['enemy_ap'] > 0) {
+    $safety = 0;
+    while ($cState['enemy_ap'] > 0 && $safety++ < 20) {
         $pl = $cState['player_pos']; $en = $cState['enemy_pos'];
         $dist = getGameDistance($pl['x'], $pl['y'], $en['x'], $en['y']);
         
+        // HEAL LOGIC (Free action)
+        if ($heals > 0 && $char['enemy_hp'] < ($char['enemy_max_hp'] * 0.5)) {
+             $healAmt = (int)($char['enemy_max_hp'] * 0.3); // Heal 30%
+             $char['enemy_hp'] = min($char['enemy_max_hp'], $char['enemy_hp'] + $healAmt);
+             $heals--; $cState['enemy_heals'] = $heals; // No AP cost
+             $actions_performed[] = ['type' => 'heal', 'amount' => $healAmt];
+             $log .= "$name heals for $healAmt HP! ";
+             continue;
+        }
+
         $isHorizontal = ($pl['y'] == $en['y']);
         $maxDist = $isHorizontal ? 2.2 : 1.1;
         if ($dist <= $maxDist && $cState['enemy_ap'] >= 2) {
-            $dmg = rand(10, 18);
+            $baseDmg = rand(10, 18);
+            $dmg = (int)ceil($baseDmg * $dmgMult * $levelMult);
+            
             if (!empty($cState['is_defending'])) {
                 $dmg = ceil($dmg * 0.5);
-                $log = "Wróg atakuje! Blokujesz ($dmg dmg).";
+                $log .= "$name attacks! You block ($dmg dmg).";
             } else {
-                $log = "Wróg atakuje! Tracisz $dmg HP.";
+                $log .= "$name attacks! You lose $dmg HP.";
             }
             $char['hp'] -= $dmg;
             $cState['enemy_ap'] = 0;
@@ -904,8 +1033,8 @@ if ($action === 'enemy_turn') {
     
     $cState['turn'] = 'player'; $cState['player_ap'] = 2; $cState['is_defending'] = false; 
     $died = ($char['hp'] <= 0); if ($died) { $char['hp'] = 0; $cState = NULL; }
-    $pdo->prepare("UPDATE characters SET hp=?, combat_state=? WHERE id=?")->execute([$char['hp'], json_encode($cState), $charId]);
-    echo json_encode(['status'=>'success', 'hp'=>$char['hp'], 'log'=>$log, 'combat_state'=>$cState, 'player_died'=>$died, 'actions' => $actions_performed]); exit;
+    $pdo->prepare("UPDATE characters SET hp=?, enemy_hp=?, combat_state=? WHERE id=?")->execute([$char['hp'], $char['enemy_hp'], json_encode($cState), $charId]);
+    echo json_encode(['status'=>'success', 'hp'=>$char['hp'], 'enemy_hp'=>$char['enemy_hp'], 'log'=>$log, 'combat_state'=>$cState, 'player_died'=>$died, 'actions' => $actions_performed]); exit;
 }
 
 if ($action === 'get_other_players') {
@@ -931,6 +1060,16 @@ if ($action === 'get_other_players') {
     } catch (Exception $e) {
         $otherPlayers = [];
     }
+
+    // Get ALL online players in this world for the UI list (ignoring distance)
+    $stmtList = $pdo->prepare("
+        SELECT c.id, c.name, c.level 
+        FROM characters c 
+        WHERE c.world_id = ? AND c.last_seen > DATE_SUB(NOW(), INTERVAL ? MINUTE)
+        ORDER BY c.level DESC
+    ");
+    $stmtList->execute([$char['world_id'], $timeoutMinutes]);
+    $onlineList = $stmtList->fetchAll(PDO::FETCH_ASSOC);
     
     // Check for incoming duel requests
     $stmt = $pdo->prepare("SELECT r.id, c.name as challenger_name FROM duel_requests r JOIN characters c ON r.challenger_id = c.id WHERE r.target_id = ? AND r.status = 'pending'");
@@ -940,6 +1079,87 @@ if ($action === 'get_other_players') {
     // Check if I am in a duel (to auto-start frontend)
     $myDuelId = $char['duel_id'];
     
-    echo json_encode(['status' => 'success', 'players' => $otherPlayers, 'duel_requests' => $requests, 'my_duel_id' => $myDuelId]); exit;
+    echo json_encode(['status' => 'success', 'players' => $otherPlayers, 'online_list' => $onlineList, 'duel_requests' => $requests, 'my_duel_id' => $myDuelId]); exit;
+}
+
+if ($action === 'spend_stat_point') {
+    $stat = $input['stat'];
+    if ($char['stat_points'] > 0) {
+        $char['stat_points']--;
+        if ($stat === 'str') $char['base_attack']++;
+        elseif ($stat === 'def') $char['base_defense']++;
+        elseif ($stat === 'hp') { $char['max_hp'] += 5; $char['hp'] += 5; }
+        elseif ($stat === 'eng') { $char['max_energy'] += 1; $char['energy'] += 1; }
+        
+        $pdo->prepare("UPDATE characters SET stat_points=?, base_attack=?, base_defense=?, max_hp=?, hp=?, max_energy=?, energy=? WHERE id=?")
+            ->execute([$char['stat_points'], $char['base_attack'], $char['base_defense'], $char['max_hp'], $char['hp'], $char['max_energy'], $char['energy'], $charId]);
+            
+        echo json_encode(['status' => 'success', 'data' => $char]); exit;
+    }
+    echo json_encode(['status' => 'error', 'message' => 'No points']); exit;
+}
+
+// --- SHOPS ---
+
+if ($action === 'get_shop_data') {
+    $shopType = $input['shop_type']; // leathersmith, blacksmith, armorer, clergy
+    
+    $items = [];
+    if ($shopType === 'leathersmith') {
+        // Sells Leather Armor (ID 4, 6)
+        $stmt = $pdo->query("SELECT * FROM items WHERE id IN (4, 6)");
+        $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } elseif ($shopType === 'blacksmith') {
+        // Sells Weapons (1,2,3) and maybe Chainmail (5)
+        $stmt = $pdo->query("SELECT * FROM items WHERE id IN (1, 2, 3, 5)");
+        $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } elseif ($shopType === 'armorer') {
+        // Expensive heavy armor (Placeholder for now, reusing 5 or adding new)
+        $stmt = $pdo->query("SELECT * FROM items WHERE id IN (5)"); 
+        $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } elseif ($shopType === 'clergy') {
+        // Potions (8) and Bandages (7)
+        $stmt = $pdo->query("SELECT * FROM items WHERE id IN (7, 8)");
+        $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+    
+    echo json_encode(['status' => 'success', 'items' => $items, 'gold' => $char['gold']]); exit;
+}
+
+if ($action === 'buy_item') {
+    $itemId = (int)$input['item_id'];
+    $stmt = $pdo->prepare("SELECT * FROM items WHERE id = ?");
+    $stmt->execute([$itemId]);
+    $item = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$item) { echo json_encode(['status' => 'error', 'message' => 'Item not found']); exit; }
+    if ($char['gold'] < $item['price']) { echo json_encode(['status' => 'error', 'message' => 'Not enough gold!']); exit; }
+    
+    // Deduct gold
+    $newGold = $char['gold'] - $item['price'];
+    $pdo->prepare("UPDATE characters SET gold = ? WHERE id = ?")->execute([$newGold, $charId]);
+    
+    // Add item
+    $pdo->prepare("INSERT INTO inventory (character_id, item_id, quantity) VALUES (?, ?, 1) ON DUPLICATE KEY UPDATE quantity = quantity + 1")
+        ->execute([$charId, $itemId]);
+        
+    echo json_encode(['status' => 'success', 'gold' => $newGold, 'message' => 'Bought ' . $item['name']]); exit;
+}
+
+if ($action === 'sell_item') {
+    $itemId = (int)$input['item_id']; // Item ID from items table
+    // Check if user has it
+    $stmt = $pdo->prepare("SELECT inventory.id as inv_id, inventory.quantity, items.price FROM inventory JOIN items ON inventory.item_id = items.id WHERE character_id = ? AND items.id = ?");
+    $stmt->execute([$charId, $itemId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$row || $row['quantity'] < 1) { echo json_encode(['status' => 'error', 'message' => 'You do not have this item']); exit; }
+    
+    $sellPrice = floor($row['price'] * 0.5); // Sell for 50% value
+    if ($row['quantity'] > 1) { $pdo->prepare("UPDATE inventory SET quantity = quantity - 1 WHERE id = ?")->execute([$row['inv_id']]); }
+    else { $pdo->prepare("DELETE FROM inventory WHERE id = ?")->execute([$row['inv_id']]); }
+    
+    $pdo->prepare("UPDATE characters SET gold = gold + ? WHERE id = ?")->execute([$sellPrice, $charId]);
+    echo json_encode(['status' => 'success', 'gold' => $char['gold'] + $sellPrice, 'message' => "Sold for $sellPrice gold."]); exit;
 }
 ?>

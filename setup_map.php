@@ -7,7 +7,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
-    <title>Generator Świata RPG</title>
+    <title>RPG World Generator</title>
     <style>
         body { background: #121212; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
         .panel { background: #1e1e1e; padding: 40px; border-radius: 8px; border: 1px solid #333; text-align: center; width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
@@ -21,12 +21,12 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 </head>
 <body>
     <div class="panel">
-        <h2>Stwórz Nowy Świat</h2>
+        <h2>Create New World</h2>
         <form method="POST">
-            <div class="labels"><span>Mały (25x50)</span><span>Ogromny (100x200)</span></div>
+            <div class="labels"><span>Small (25x50)</span><span>Huge (100x200)</span></div>
             <input type="range" name="size_scale" min="0" max="100" value="0" oninput="updateSize(this.value)">
             <div id="size-display">25 x 50</div>
-            <button type="submit">GENERUJ ŚWIAT</button>
+            <button type="submit">GENERATE WORLD</button>
         </form>
     </div>
     <script>
@@ -53,7 +53,7 @@ $height = 50 + (int)(150 * ($scale / 100));
 $worldName = $prefixes[array_rand($prefixes)] . ' ' . $names[array_rand($names)];
 
 echo "<body style='background:#121212; color:#e0e0e0; font-family:sans-serif; text-align:center; padding-top:50px;'>";
-echo "<h2>Tworzenie świata: $worldName ($width x $height)...</h2>";
+echo "<h2>Creating world: $worldName ($width x $height)...</h2>";
 
 try {
     // 1. Dodajemy wpis do tabeli worlds (is_tutorial = 0)
@@ -97,10 +97,10 @@ try {
         $vCount++;
     }
 
-    echo "<h1 style='color:green'>SUKCES! Dodano świat '$worldName'.</h1>";
-    echo "<a href='index.php' style='font-size:20px; font-weight:bold; padding:10px; background:#333; color:white; text-decoration:none;'>WRÓĆ DO GRY</a>";
+    echo "<h1 style='color:green'>SUCCESS! Added world '$worldName'.</h1>";
+    echo "<a href='index.php' style='font-size:20px; font-weight:bold; padding:10px; background:#333; color:white; text-decoration:none;'>RETURN TO GAME</a>";
 
 } catch (PDOException $e) {
-    die("Błąd SQL: " . $e->getMessage());
+    die("SQL Error: " . $e->getMessage());
 }
 ?>

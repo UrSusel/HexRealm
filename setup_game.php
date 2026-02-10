@@ -24,7 +24,7 @@ try {
     $pdo->exec("CREATE TABLE IF NOT EXISTS characters (
         id INT AUTO_INCREMENT PRIMARY KEY,
         user_id INT NOT NULL,
-        name VARCHAR(50) DEFAULT 'Bezimienny',
+        name VARCHAR(50) DEFAULT 'Nameless',
         class_id INT DEFAULT NULL,
         hp INT DEFAULT 100,
         max_hp INT DEFAULT 100,
@@ -46,6 +46,9 @@ try {
         enemy_hp INT DEFAULT 0,
         enemy_max_hp INT DEFAULT 0,
         combat_state TEXT DEFAULT NULL,
+        gold INT DEFAULT 0,
+        duel_id INT DEFAULT NULL,
+        last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id),
         FOREIGN KEY (world_id) REFERENCES worlds(id)
     )");
@@ -61,11 +64,17 @@ try {
     $pdo->exec("CREATE TABLE IF NOT EXISTS items (
         id INT AUTO_INCREMENT PRIMARY KEY,
         name VARCHAR(50) NOT NULL,
-        type ENUM('weapon', 'armor', 'consumable') NOT NULL,
+        type VARCHAR(50) NOT NULL,
         power INT DEFAULT 0,
         optimal_class_id INT,
-        icon VARCHAR(10)
+        icon VARCHAR(10),
+        price INT DEFAULT 10,
+        rarity VARCHAR(20) DEFAULT 'common',
+        description TEXT
     )");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS duel_requests (id INT AUTO_INCREMENT PRIMARY KEY, challenger_id INT, target_id INT, status VARCHAR(20) DEFAULT 'pending', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS active_duels (id INT AUTO_INCREMENT PRIMARY KEY, player1_id INT, player2_id INT, current_turn_id INT, combat_state TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, turn_start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS inventory (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -74,7 +83,8 @@ try {
         quantity INT DEFAULT 1,
         is_equipped BOOLEAN DEFAULT FALSE,
         FOREIGN KEY (character_id) REFERENCES characters(id),
-        FOREIGN KEY (item_id) REFERENCES items(id)
+        FOREIGN KEY (item_id) REFERENCES items(id),
+        UNIQUE KEY idx_char_item (character_id, item_id)
     )");
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS map_tiles (
@@ -104,7 +114,7 @@ try {
     // Insert (or recreate) tutorial world with id = 1
     $pdo->prepare("INSERT INTO worlds (id, name, width, height, is_tutorial) VALUES (1, ?, ?, ?, 1)
         ON DUPLICATE KEY UPDATE name = VALUES(name), width = VALUES(width), height = VALUES(height), is_tutorial = VALUES(is_tutorial)")
-        ->execute(['Wyspa Tutorialowa', 15, 15]);
+        ->execute(['Tutorial Island', 15, 15]);
 
     // Ensure a default user and character exist (idempotent)
     $pdo->prepare("INSERT INTO users (id, username, password) VALUES (1, 'Tester', 'admin')
@@ -112,26 +122,33 @@ try {
         ->execute();
 
     $pdo->prepare("INSERT INTO characters (id, user_id, name, hp, max_hp, energy, max_energy, base_attack, world_id, tutorial_completed)
-        VALUES (1, 1, 'Bohater', 100, 100, 10, 10, 1, 1, 0)
+        VALUES (1, 1, 'Hero', 100, 100, 10, 10, 1, 1, 0)
         ON DUPLICATE KEY UPDATE user_id=VALUES(user_id), name=VALUES(name), hp=VALUES(hp), max_hp=VALUES(max_hp),
             energy=VALUES(energy), max_energy=VALUES(max_energy), base_attack=VALUES(base_attack), world_id=VALUES(world_id), tutorial_completed=VALUES(tutorial_completed)")
         ->execute();
 
     // Insert classes/items if missing (safe, will ignore duplicates)
-    $pdo->exec("INSERT IGNORE INTO classes (id, name, base_hp, base_energy, description) VALUES
-        (1, 'Wojownik', 150, 8, 'Mistrz miecza.'),
-        (2, 'Mag', 80, 12, 'Włada magią.'),
-        (3, 'Łotrzyk', 100, 10, 'Szybki i zwinny.')");
+    $pdo->exec("INSERT INTO classes (id, name, base_hp, base_energy, description) VALUES
+        (1, 'Warrior', 150, 8, 'Master of the sword.'),
+        (2, 'Mage', 80, 12, 'Wields magic.'),
+        (3, 'Rogue', 100, 10, 'Fast and agile.') ON DUPLICATE KEY UPDATE name=VALUES(name), description=VALUES(description)");
 
-    $pdo->exec("INSERT IGNORE INTO items (id, name, type, power, optimal_class_id, icon) VALUES
-        (1, 'Zardzewiały Miecz', 'weapon', 10, 1, '⚔️'),
-        (2, 'Stary Kostur', 'weapon', 12, 2, '🪄'),
-        (3, 'Sztylet', 'weapon', 9, 3, '🗡️'),
-        (4, 'Skórzana Kurtka', 'armor', 5, 3, '👕'),
-        (5, 'Płytowa Zbroja', 'armor', 15, 1, '🛡️'),
-        (6, 'Szata Ucznia', 'armor', 3, 2, '👘'),
-        (7, 'Mikstura Życia', 'consumable', 50, NULL, '🧪'),
-        (8, 'Bandaż', 'consumable', 20, NULL, '🩹')");
+    $pdo->exec("INSERT INTO items (id, name, type, power, optimal_class_id, icon, price, rarity, description) VALUES
+        (1, 'Rusty Sword', 'weapon', 10, 1, '⚔️', 35, 'common', 'A basic rusty sword.'),
+        (2, 'Old Staff', 'weapon', 12, 2, '🪄', 35, 'common', 'A wooden staff.'),
+        (3, 'Dagger', 'weapon', 9, 3, '🗡️', 35, 'common', 'Sharp but small.'),
+        (4, 'Leather Jacket', 'armor', 5, 3, '👕', 45, 'common', 'Basic protection.'),
+        (5, 'Plate Armor', 'armor', 15, 1, '🛡️', 45, 'common', 'Heavy iron armor.'),
+        (6, 'Apprentice Robe', 'armor', 3, 2, '👘', 45, 'common', 'Cloth robe.'),
+        (7, 'Health Potion', 'consumable', 50, NULL, '🧪', 25, 'uncommon', 'Heals 50 HP'),
+        (8, 'Bandage', 'consumable', 20, NULL, '🩹', 5, 'common', 'Heals 20 HP'),
+        (20, 'Rat Tail', 'drop', 0, NULL, '🐀', 4, 'common', 'A tail from a sewer rat.'),
+        (21, 'Goblin Ear', 'drop', 0, NULL, '👂', 12, 'uncommon', 'A trophy from a goblin.'),
+        (22, 'Bandit Insignia', 'drop', 0, NULL, '🎖️', 25, 'rare', 'Stolen from a desert bandit.'),
+        (23, 'Lava Core', 'drop', 0, NULL, '🔥', 50, 'rare', 'Warm to the touch.'),
+        (24, 'Demon Horn', 'drop', 0, NULL, '😈', 120, 'very_rare', 'Radiates dark energy.')
+        ON DUPLICATE KEY UPDATE name=VALUES(name), price=VALUES(price), rarity=VALUES(rarity), description=VALUES(description)
+    ");
 
     // Ensure the tutorial character has basic consumables (delete specific items then reinsert to avoid duplicates)
     $pdo->prepare("DELETE FROM inventory WHERE character_id = ? AND item_id IN (7,8)")->execute([1]);
@@ -158,19 +175,8 @@ try {
     }
 
     $pdo->exec("SET FOREIGN_KEY_CHECKS = 1");
-    echo "<h1 style='color:green'>✅ Gotowe! (Tutorial world recreated)</h1>";
-    echo "<a href='index.php'>WRÓĆ DO GRY</a>";
-
-    // Ensure last_seen column exists (non-destructive, safe)
-    $colCheck = $pdo->prepare("
-        SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS 
-        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'characters' AND COLUMN_NAME = 'last_seen'
-    ");
-    $colCheck->execute();
-    $has = (int)$colCheck->fetchColumn();
-    if (!$has) {
-        $pdo->exec("ALTER TABLE characters ADD COLUMN last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
-    }
+    echo "<h1 style='color:green'>✅ Done! (Tutorial world recreated)</h1>";
+    echo "<a href='index.php'>RETURN TO GAME</a>";
 
 } catch (PDOException $e) {
     die("Błąd SQL: " . $e->getMessage());

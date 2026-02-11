@@ -321,11 +321,14 @@ if ($action === 'get_state') {
     $inventory = $invStmt->fetchAll(PDO::FETCH_ASSOC);
 
     $totalAttack = 1 + ($char['base_attack'] ?? 1); 
+    $totalDefense = ($char['base_defense'] ?? 0);
     foreach ($inventory as $item) {
         if ($item['is_equipped'] && $item['type'] == 'weapon') $totalAttack += $item['power'];
+        if ($item['is_equipped'] && $item['type'] == 'armor') $totalDefense += $item['power'];
     }
 
     $char['attack'] = $totalAttack;
+    $char['defense'] = $totalDefense;
     $char['inventory'] = $inventory;
     $char['speed'] = ($char['energy'] > 0) ? $MAX_SPEED_NORMAL : $MAX_SPEED_EXHAUSTED;
     
@@ -746,13 +749,20 @@ if ($action === 'pvp_action') {
         $dist = getGameDistance($myPos['x'], $myPos['y'], $enPos['x'], $enPos['y']);
         if ($dist > 2.2) { echo json_encode(['status' => 'error', 'message' => 'Too far']); exit; }
         
-        $dmg = rand(10, 15) + $char['base_attack'];
+        // Get attacker weapon power
+        $weaponStmt = $pdo->prepare("SELECT items.power FROM inventory JOIN items ON inventory.item_id = items.id WHERE character_id = ? AND is_equipped = 1 AND items.type = 'weapon'");
+        $weaponStmt->execute([$charId]);
+        $weaponPower = $weaponStmt->fetchColumn() ?: 0;
+        
+        $rawDmg = rand(10, 15) + $char['base_attack'] + $weaponPower;
         $enemyId = $isP1 ? $duel['player2_id'] : $duel['player1_id'];
         
-        // Check Enemy HP for Kill
-        $stmt = $pdo->prepare("SELECT hp, name FROM characters WHERE id = ?");
+        // Check Enemy HP and armor for defense
+        $stmt = $pdo->prepare("SELECT c.hp, c.name, c.base_defense, COALESCE(i.power, 0) as armor_power FROM characters c LEFT JOIN inventory inv ON inv.character_id = c.id AND inv.is_equipped = 1 LEFT JOIN items i ON inv.item_id = i.id AND i.type = 'armor' WHERE c.id = ?");
         $stmt->execute([$enemyId]);
         $enemy = $stmt->fetch();
+        $enemyDef = (int)($enemy['base_defense'] ?? 0) + (int)($enemy['armor_power'] ?? 0);
+        $dmg = max(1, $rawDmg - $enemyDef);
         $newHp = $enemy['hp'] - $dmg;
         
         if ($newHp <= 0) {
@@ -1005,6 +1015,14 @@ if ($action === 'enemy_turn') {
             $baseDmg = rand(10, 18);
             $dmg = (int)ceil($baseDmg * $dmgMult * $levelMult);
             
+            // Get player armor power
+            $armorStmt = $pdo->prepare("SELECT items.power FROM inventory JOIN items ON inventory.item_id = items.id WHERE character_id = ? AND is_equipped = 1 AND items.type = 'armor'");
+            $armorStmt->execute([$charId]);
+            $armorPower = $armorStmt->fetchColumn() ?: 0;
+            
+            $totalDefense = (int)($char['base_defense'] ?? 0) + $armorPower;
+            $dmg = max(1, $dmg - $totalDefense);
+            
             if (!empty($cState['is_defending'])) {
                 $dmg = ceil($dmg * 0.5);
                 $log .= "$name attacks! You block ($dmg dmg).";
@@ -1106,20 +1124,20 @@ if ($action === 'get_shop_data') {
     
     $items = [];
     if ($shopType === 'leathersmith') {
-        // Sells Leather Armor (ID 4, 6)
-        $stmt = $pdo->query("SELECT * FROM items WHERE id IN (4, 6)");
+        // Sells Leather Armor - All tiers
+        $stmt = $pdo->query("SELECT * FROM items WHERE id IN (4, 37, 38, 39, 40) ORDER BY price ASC");
         $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } elseif ($shopType === 'blacksmith') {
-        // Sells Weapons (1,2,3) and maybe Chainmail (5)
-        $stmt = $pdo->query("SELECT * FROM items WHERE id IN (1, 2, 3, 5)");
+        // Sells All Weapons + Light Armor (Robes)
+        $stmt = $pdo->query("SELECT * FROM items WHERE id IN (1, 2, 3, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 6, 41, 42, 43, 44) ORDER BY type DESC, price ASC");
         $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } elseif ($shopType === 'armorer') {
-        // Expensive heavy armor (Placeholder for now, reusing 5 or adding new)
-        $stmt = $pdo->query("SELECT * FROM items WHERE id IN (5)"); 
+        // Sells Heavy Armor - All tiers
+        $stmt = $pdo->query("SELECT * FROM items WHERE id IN (5, 45, 46, 47, 48) ORDER BY price ASC"); 
         $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } elseif ($shopType === 'clergy') {
-        // Potions (8) and Bandages (7)
-        $stmt = $pdo->query("SELECT * FROM items WHERE id IN (7, 8)");
+        // Potions and Bandages
+        $stmt = $pdo->query("SELECT * FROM items WHERE id IN (7, 8) ORDER BY price ASC");
         $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
     
@@ -1146,16 +1164,47 @@ if ($action === 'buy_item') {
     echo json_encode(['status' => 'success', 'gold' => $newGold, 'message' => 'Bought ' . $item['name']]); exit;
 }
 
+if ($action === 'equip_item') {
+    $itemId = (int)$input['item_id'];
+    
+    // Get item details
+    $stmt = $pdo->prepare("SELECT items.type, items.name, inventory.id as inv_id FROM inventory JOIN items ON inventory.item_id = items.id WHERE character_id = ? AND items.id = ?");
+    $stmt->execute([$charId, $itemId]);
+    $item = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$item) { echo json_encode(['status' => 'error', 'message' => 'Item not found']); exit; }
+    if ($item['type'] !== 'weapon' && $item['type'] !== 'armor') { echo json_encode(['status' => 'error', 'message' => 'Cannot equip this item']); exit; }
+    
+    // Unequip current item of same type
+    $stmt = $pdo->prepare("UPDATE inventory SET is_equipped = 0 WHERE character_id = ? AND is_equipped = 1 AND item_id IN (SELECT id FROM items WHERE type = ?)");
+    $stmt->execute([$charId, $item['type']]);
+    
+    // Equip new item
+    $pdo->prepare("UPDATE inventory SET is_equipped = 1 WHERE id = ?")->execute([$item['inv_id']]);
+    
+    echo json_encode(['status' => 'success', 'message' => 'Equipped ' . $item['name']]); exit;
+}
+
+if ($action === 'unequip_item') {
+    $itemId = (int)$input['item_id'];
+    
+    $stmt = $pdo->prepare("UPDATE inventory SET is_equipped = 0 WHERE character_id = ? AND item_id = ? AND is_equipped = 1");
+    $stmt->execute([$charId, $itemId]);
+    
+    echo json_encode(['status' => 'success', 'message' => 'Item unequipped']); exit;
+}
+
 if ($action === 'sell_item') {
     $itemId = (int)$input['item_id']; // Item ID from items table
-    // Check if user has it
-    $stmt = $pdo->prepare("SELECT inventory.id as inv_id, inventory.quantity, items.price FROM inventory JOIN items ON inventory.item_id = items.id WHERE character_id = ? AND items.id = ?");
+    // Check if user has it and if it's equipped
+    $stmt = $pdo->prepare("SELECT inventory.id as inv_id, inventory.quantity, inventory.is_equipped, items.price, items.type FROM inventory JOIN items ON inventory.item_id = items.id WHERE character_id = ? AND items.id = ?");
     $stmt->execute([$charId, $itemId]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if (!$row || $row['quantity'] < 1) { echo json_encode(['status' => 'error', 'message' => 'You do not have this item']); exit; }
+    if ($row['is_equipped'] == 1) { echo json_encode(['status' => 'error', 'message' => 'Cannot sell equipped items! Unequip first.']); exit; }
     
-    $sellPrice = floor($row['price'] * 0.5); // Sell for 50% value
+    $sellPrice = floor($row['price'] * 0.4); // Sell for 40% value
     if ($row['quantity'] > 1) { $pdo->prepare("UPDATE inventory SET quantity = quantity - 1 WHERE id = ?")->execute([$row['inv_id']]); }
     else { $pdo->prepare("DELETE FROM inventory WHERE id = ?")->execute([$row['inv_id']]); }
     

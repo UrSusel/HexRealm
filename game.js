@@ -16,7 +16,8 @@ let gameState = {
     tutorial_completed: false,
     is_pvp: false,
     gold: 0,
-    stat_points: 0, base_attack: 1, base_defense: 0
+    stat_points: 0, base_attack: 1, base_defense: 0,
+    attack: 1, defense: 0
 };
 
 let inCombatMode = false;
@@ -512,27 +513,136 @@ function renderInventory(inventory) {
 }
 
 async function handleInventoryClick(item) {
-    // Simple usage logic for consumables
-    if (item.item_id == 7 || item.item_id == 8) { // Bandage or Potion
+    // Consumables - use directly
+    if (item.type === 'consumable') {
         if (gameState.in_combat) {
-            useItem(item.item_id); // Combat usage
+            useItem(item.item_id);
         } else {
-            // Out of combat usage
             const res = await apiPost('use_item', { item_id: item.item_id });
             if (res.status === 'success') {
                 gameState.hp = parseInt(res.hp);
                 updateUI({ hp: gameState.hp });
                 showToast(res.message, 'success');
-                // Refresh inventory
                 const state = await apiPost('get_state');
                 if (state.status === 'success') renderInventory(state.data.inventory);
             } else {
                 showToast(res.message, 'error');
             }
         }
+        return;
+    }
+    
+    // Equipment & Drops - show context menu
+    if (item.type === 'weapon' || item.type === 'armor' || item.type === 'drop') {
+        showItemMenu(item);
+    }
+}
+
+function showItemMenu(item) {
+    let modal = document.getElementById('item-menu-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'item-menu-modal';
+        modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; z-index:10000;';
+        modal.innerHTML = `
+            <div style="background:#1a1a1a; border:2px solid gold; border-radius:8px; padding:20px; min-width:300px; box-shadow:0 0 20px rgba(255,215,0,0.5);">
+                <h3 id="item-menu-title" style="color:gold; margin:0 0 15px 0; text-align:center;"></h3>
+                <p id="item-menu-desc" style="color:#ccc; font-size:14px; margin:0 0 20px 0; text-align:center;"></p>
+                <div id="item-menu-buttons" style="display:flex; flex-direction:column; gap:10px;"></div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        modal.onclick = (e) => { if (e.target === modal) modal.style.display = 'none'; };
+    }
+    
+    const title = modal.querySelector('#item-menu-title');
+    const desc = modal.querySelector('#item-menu-desc');
+    const buttons = modal.querySelector('#item-menu-buttons');
+    
+    title.innerText = item.name + (item.is_equipped ? ' ✓' : '');
+    desc.innerText = item.description || '';
+    buttons.innerHTML = '';
+    
+    // Equip/Unequip buttons for weapons and armor
+    if (item.type === 'weapon' || item.type === 'armor') {
+        if (item.is_equipped == 1) {
+            const unequipBtn = document.createElement('button');
+            unequipBtn.innerText = '🔓 Unequip';
+            unequipBtn.style.cssText = 'padding:10px; background:#555; color:white; border:none; border-radius:4px; cursor:pointer; font-size:16px;';
+            unequipBtn.onclick = () => { handleUnequipItem(item); modal.style.display = 'none'; };
+            buttons.appendChild(unequipBtn);
+        } else {
+            const equipBtn = document.createElement('button');
+            equipBtn.innerText = '⚔️ Equip';
+            equipBtn.style.cssText = 'padding:10px; background:#4CAF50; color:white; border:none; border-radius:4px; cursor:pointer; font-size:16px;';
+            equipBtn.onclick = () => { handleEquipItem(item); modal.style.display = 'none'; };
+            buttons.appendChild(equipBtn);
+        }
+    }
+    
+    // Sell button (only if not equipped)
+    if (item.is_equipped != 1) {
+        const sellBtn = document.createElement('button');
+        const sellPrice = Math.floor(item.price * 0.4);
+        sellBtn.innerText = `💰 Sell (${sellPrice}G)`;
+        sellBtn.style.cssText = 'padding:10px; background:#f39c12; color:white; border:none; border-radius:4px; cursor:pointer; font-size:16px;';
+        sellBtn.onclick = () => { handleSellFromInventory(item); modal.style.display = 'none'; };
+        buttons.appendChild(sellBtn);
+    }
+    
+    // Cancel button
+    const cancelBtn = document.createElement('button');
+    cancelBtn.innerText = 'Cancel';
+    cancelBtn.style.cssText = 'padding:10px; background:#333; color:white; border:none; border-radius:4px; cursor:pointer; font-size:16px;';
+    cancelBtn.onclick = () => { modal.style.display = 'none'; };
+    buttons.appendChild(cancelBtn);
+    
+    modal.style.display = 'flex';
+}
+
+async function handleEquipItem(item) {
+    const res = await apiPost('equip_item', { item_id: item.item_id });
+    if (res.status === 'success') {
+        showToast(res.message, 'success');
+        const state = await apiPost('get_state');
+        if (state.status === 'success') {
+            renderInventory(state.data.inventory);
+            updateUI(state.data);
+        }
     } else {
-        // Show info for non-consumables
-        showToast(`${item.name}: ${item.description || 'Item'}`, 'info');
+        showToast(res.message, 'error');
+    }
+}
+
+async function handleUnequipItem(item) {
+    const res = await apiPost('unequip_item', { item_id: item.item_id });
+    if (res.status === 'success') {
+        showToast(res.message, 'success');
+        const state = await apiPost('get_state');
+        if (state.status === 'success') {
+            renderInventory(state.data.inventory);
+            updateUI(state.data);
+        }
+    } else {
+        showToast(res.message, 'error');
+    }
+}
+
+async function handleSellFromInventory(item) {
+    const sellPrice = Math.floor(item.price * 0.4);
+    if (!confirm(`Sell ${item.name} for ${sellPrice} gold?`)) return;
+    
+    const res = await apiPost('sell_item', { item_id: item.item_id });
+    if (res.status === 'success') {
+        showToast(res.message, 'success');
+        gameState.gold = res.gold;
+        const state = await apiPost('get_state');
+        if (state.status === 'success') {
+            renderInventory(state.data.inventory);
+            updateUI(state.data);
+        }
+    } else {
+        showToast(res.message, 'error');
     }
 }
 
@@ -941,6 +1051,8 @@ function updateLocalState(data) {
     if(data.stat_points !== undefined) gameState.stat_points = parseInt(data.stat_points);
     if(data.base_attack !== undefined) gameState.base_attack = parseInt(data.base_attack);
     if(data.base_defense !== undefined) gameState.base_defense = parseInt(data.base_defense);
+    if(data.attack !== undefined) gameState.attack = parseInt(data.attack);
+    if(data.defense !== undefined) gameState.defense = parseInt(data.defense);
     if(data.name) gameState.name = data.name;
     if(data.id) gameState.id = parseInt(data.id);
 }
@@ -965,8 +1077,10 @@ function checkLifeStatus() { const ds = document.getElementById('death-screen');
 
 function updateAttributesUI(data) {
     const pts = (data.stat_points !== undefined) ? parseInt(data.stat_points) : gameState.stat_points;
-    const atk = (data.base_attack !== undefined) ? parseInt(data.base_attack) : gameState.base_attack;
-    const def = (data.base_defense !== undefined) ? parseInt(data.base_defense) : gameState.base_defense;
+    const baseAtk = (data.base_attack !== undefined) ? parseInt(data.base_attack) : gameState.base_attack;
+    const baseDef = (data.base_defense !== undefined) ? parseInt(data.base_defense) : gameState.base_defense;
+    const totalAtk = (data.attack !== undefined) ? parseInt(data.attack) : (gameState.attack || baseAtk);
+    const totalDef = (data.defense !== undefined) ? parseInt(data.defense) : (gameState.defense || baseDef);
     
     const el = document.getElementById('stat-points-val');
     if(el) el.innerText = pts;
@@ -980,8 +1094,8 @@ function updateAttributesUI(data) {
             </div>`;
             
         list.innerHTML = 
-            createRow('Strength (Attack)', atk, 'str') +
-            createRow('Defense', def, 'def') +
+            createRow('Attack', totalAtk, 'str') +
+            createRow('Defense', totalDef, 'def') +
             createRow('Max HP', data.max_hp || gameState.max_hp, 'hp', '+5') +
             createRow('Max Energy', data.max_energy || gameState.max_energy, 'eng');
     }
@@ -1107,7 +1221,9 @@ async function handleLogout() {
     gameState = {
         x: 0, y: 0, hp: 100, max_hp: 100, energy: 10, max_energy: 10,
         xp: 0, max_xp: 100, steps_buffer: 0, enemy_hp: 0, enemy_max_hp: 100,
-        in_combat: false, tutorial_completed: false, is_pvp: false
+        in_combat: false, tutorial_completed: false, is_pvp: false,
+        gold: 0, stat_points: 0, base_attack: 1, base_defense: 0,
+        attack: 1, defense: 0
     };
     combatState = null;
     inCombatMode = false;

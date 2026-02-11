@@ -785,7 +785,6 @@ function updateCombatEntity(pos, type, container) {
         el.id = `combat-${type}`; 
         el.style.zIndex = 100;
         el.dataset.animState = 'idle';
-        el.style.backgroundImage = `url('assets/player/Idle1.png')`;
         el.style.backgroundImage = `url('assets/player/idle1.png?v=2')`;
         // Smooth transition for movement
         el.style.transition = "left 0.6s linear, top 0.6s linear, filter 0.2s";
@@ -1641,7 +1640,6 @@ function renderOtherPlayer(playerId) {
         marker.style.display = 'block'; // Ensure visible
 
         marker.onclick = (e) => { e.stopPropagation(); openPlayerMenu(playerId); };
-        marker.style.backgroundImage = `url('assets/player/Idle1.png')`;
         marker.style.backgroundImage = `url('assets/player/idle1.png?v=2')`;
 
         marker.dataset.animState = 'idle';

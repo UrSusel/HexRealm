@@ -159,6 +159,34 @@
 
         /* Modale */
         .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 3200; display: none; flex-direction: column; align-items: center; justify-content: center; color: white; }
+        #combat-screen.modal { background: transparent !important; background-color: transparent !important; }
+        #combat-screen {
+            background-color: #050011;
+            background-image: url('img/Starry background  - Layer 02 - Stars.png'), url('img/Starry background  - Layer 01 - Void.png');
+            background-repeat: repeat-x;
+            background-size: auto 100%;
+            background-position: 0 0, 0 0;
+            animation: spaceScroll 60s linear infinite;
+        }
+        body.combat-active {
+            background-color: #050011;
+            background-image: url('img/Starry background  - Layer 02 - Stars.png'), url('img/Starry background  - Layer 01 - Void.png');
+            background-repeat: repeat-x;
+            background-size: auto 100%;
+            background-position: 0 0, 0 0;
+            animation: spaceScroll 60s linear infinite;
+        }
+        body.combat-active .top-left-ui,
+        body.combat-active #world-btn,
+        body.combat-active #shop-btn,
+        body.combat-active #right-panel,
+        body.combat-active #expand-panel-btn,
+        body.combat-active #mobile-panel-toggle {
+            display: none !important;
+        }
+        body.combat-active #game-layout {
+            display: none !important;
+        }
         .combat-btn { padding: 12px 30px; background: #c62828; color: white; border: none; font-size: 16px; margin: 10px; cursor: pointer; border-radius: 4px; font-weight: bold; }
 
         /* --- COMBAT LAYOUT (BASE) --- */
@@ -358,12 +386,16 @@
                 left: 20px;
                 padding: 5px 8px;
                 font-size: 10px;
+                position: fixed;
+                z-index: 3100;
             }
 
             #shop-btn {
                 bottom: 100px; /* Move up to not be covered by mobile panel toggle */
                 padding: 6px 12px;
                 font-size: 11px;
+                position: fixed;
+                z-index: 3100;
             }
             
             /* Bigger Top Left UI */
@@ -377,6 +409,27 @@
             .modal-panel {
                 width: 95% !important;
                 max-height: 85vh;
+            }
+
+            #char-selection-modal .char-selection {
+                width: 95% !important;
+                max-height: 85vh;
+                padding: 16px;
+                box-sizing: border-box;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+            }
+
+            #char-selection-modal .char-slots {
+                flex: 1 1 auto;
+                overflow-y: auto;
+                margin: 12px 0;
+                padding-bottom: env(safe-area-inset-bottom);
+            }
+
+            #char-selection-modal .combat-btn {
+                margin-top: 8px !important;
             }
         }
 
@@ -395,11 +448,11 @@
             /* Move buttons with panel in portrait mode */
             #world-btn, #shop-btn {
                 transition: bottom 0.3s ease-in-out;
-                bottom: calc(35vh + 20px) !important;
+                bottom: calc(35vh + 20px + env(safe-area-inset-bottom)) !important;
             }
             #game-layout.panel-collapsed #left-panel #world-btn,
             #game-layout.panel-collapsed #left-panel #shop-btn {
-                bottom: 20px !important;
+                bottom: calc(20px + env(safe-area-inset-bottom)) !important;
             }
 
             #game-layout.panel-collapsed #right-panel {
@@ -411,9 +464,34 @@
             #shop-btn {
                 left: auto !important;
                 right: 20px !important;
-                bottom: calc(35vh + 20px) !important;
+                bottom: calc(35vh + 20px + env(safe-area-inset-bottom)) !important;
                 padding: 5px 8px;
                 font-size: 10px;
+            }
+
+            #shop-modal .modal-panel {
+                width: 95% !important;
+                height: 80vh !important;
+                max-height: 85vh;
+            }
+
+            #shop-modal .shop-tabs {
+                flex-wrap: wrap;
+            }
+
+            #shop-modal .shop-tabs .tab-btn {
+                flex: 1 1 33%;
+                padding: 8px 6px;
+                font-size: 10px;
+            }
+
+            #char-selection-modal .char-selection h2 {
+                font-size: 16px;
+                margin-bottom: 6px;
+            }
+
+            #char-selection-modal .char-slot {
+                padding: 10px;
             }
 
         }
@@ -430,6 +508,27 @@
             }
             #game-layout.panel-collapsed #right-panel {
                 transform: translateX(100%);
+            }
+
+            #world-btn {
+                top: 10px !important;
+                left: 10px !important;
+                right: auto !important;
+                bottom: auto !important;
+                position: fixed;
+                z-index: 3100;
+            }
+
+            #shop-btn {
+                left: 10px !important;
+                right: auto !important;
+                bottom: calc(10px + env(safe-area-inset-bottom)) !important;
+                position: fixed;
+                z-index: 3100;
+            }
+
+            #char-selection-modal .char-selection {
+                max-height: 90vh;
             }
         }
         /* --- MOBILE COMBAT (NEW LAYOUT) --- */
@@ -528,19 +627,34 @@
 
         @media (max-width: 1366px) and (orientation: landscape) {
             #combat-screen {
-                padding: 10px;
+                padding: 6px;
+                gap: 6px;
+            }
+            #combat-screen .combat-hud {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
                 gap: 8px;
+                align-items: start;
+            }
+            #combat-screen .combat-bar-row {
+                width: auto;
+            }
+            #combat-screen .combat-bar-row.enemy-row {
+                align-items: flex-end;
+                text-align: right;
             }
             #combat-screen .combat-arena-shell {
-                height: 30vh;
-                min-height: 150px;
+                height: 32vh;
+                min-height: 180px;
             }
             #combat-controls {
                 display: flex !important;
                 flex-wrap: wrap;
                 gap: 6px;
-                margin: -12px 0 0;
+                margin: 0;
                 width: 100% !important;
+                order: 4;
+                transform: translateY(-30%);
             }
             #combat-controls .combat-btn {
                 padding: 6px 8px;
@@ -551,8 +665,31 @@
                 height: 14px;
             }
             #combat-log {
-                font-size: 12px;
+                font-size: 11px;
                 min-height: 24px;
+                margin-top: 0;
+                order: 3;
+            }
+
+            #world-btn {
+                top: 10px !important;
+                right: 320px !important;
+                left: auto !important;
+                bottom: auto !important;
+                position: fixed;
+                z-index: 3100;
+            }
+            #game-layout.panel-collapsed #world-btn {
+                right: 10px !important;
+            }
+
+            #shop-btn {
+                left: 50% !important;
+                right: auto !important;
+                bottom: calc(20px + env(safe-area-inset-bottom)) !important;
+                transform: translateX(-50%) !important;
+                position: fixed;
+                z-index: 3100;
             }
         }
     </style>
@@ -795,7 +932,7 @@
             <h2 style="margin:0; color:#e0e0e0;">City Market</h2>
             <button class="icon-btn" onclick="document.getElementById('shop-modal').style.display='none'"><img src="assets/ui/ex.png" alt="Close"></button>
         </div>
-        <div style="display:flex; background:#111;">
+        <div class="shop-tabs" style="display:flex; background:#111;">
             <button class="tab-btn active" onclick="loadShop('leathersmith', this)">Leathersmith</button>
             <button class="tab-btn" onclick="loadShop('blacksmith', this)">Blacksmith</button>
             <button class="tab-btn" onclick="loadShop('armorer', this)">Armorer</button>
@@ -826,6 +963,6 @@
 
 <button id="mobile-panel-toggle" onclick="toggleRightPanel()">▼</button>
 
-<script src="game.js?v=20260210_02"></script>
+<script src="game.js?v=20260211_01"></script>
 </body>
 </html>

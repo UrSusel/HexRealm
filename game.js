@@ -24,6 +24,8 @@ let combatState = null;
 let lowEnergyWarningShown = false;
 let isProcessingTurn = false;
 let combatCameraOverviewUntil = 0;
+let combatCameraState = { x: 0, y: 0, scale: 1, initialized: false };
+let mapScaleCache = { w: 0, h: 0, portrait: null, landscape: null };
 
 // --- AUDIO ---
 const AUDIO_PATHS = {
@@ -387,20 +389,13 @@ function centerMapOnPlayer(pixelX, pixelY) {
     const isMobile = Math.min(window.innerWidth, window.innerHeight) <= 900;
 
     if (isMobile) {
-        // Force a zoomed-out base and then zoom in per orientation
-        const baseScale = isPortrait ? 0.35 : 0.45;
-        const zoomInFactor = isPortrait ? 3.0 : 2.0;
-        const zoomOutAdjust = isPortrait ? 0.8 : 0.85;
-        scale = baseScale * zoomInFactor * zoomOutAdjust;
-
-        // Zoom out by 20% for both orientations
-        scale *= 0.8;
+        scale = isPortrait ? 0.68 : 0.62;
 
         const layout = document.getElementById('game-layout');
         const rightPanel = document.getElementById('right-panel');
         if (isPortrait && layout && rightPanel && !layout.classList.contains('panel-collapsed')) {
             const panelHeight = rightPanel.getBoundingClientRect().height || 0;
-            offsetY = -(panelHeight / 2);
+            offsetY = -(panelHeight * 0.2);
         }
     }
 
@@ -546,8 +541,24 @@ async function handleInventoryClick(item) {
 function toggleCombatMode(active, currentHp, enemyHp = 0) {
     const combatScreen = document.getElementById('combat-screen');
     const mapDiv = document.getElementById('map');
+    const gameLayout = document.getElementById('game-layout');
+    const topLeftUi = document.querySelector('.top-left-ui');
+    const rightPanel = document.getElementById('right-panel');
+    const worldBtn = document.getElementById('world-btn');
+    const shopBtn = document.getElementById('shop-btn');
+    const expandPanelBtn = document.getElementById('expand-panel-btn');
+    const mobilePanelToggle = document.getElementById('mobile-panel-toggle');
     inCombatMode = active; gameState.in_combat = active;
     if (active) isProcessingTurn = false;
+    if (document.body) document.body.classList.toggle('combat-active', active);
+
+    if (gameLayout) gameLayout.style.display = active ? 'none' : 'flex';
+    if (topLeftUi) topLeftUi.style.display = active ? 'none' : '';
+    if (rightPanel) rightPanel.style.display = active ? 'none' : '';
+    if (worldBtn) worldBtn.style.display = active ? 'none' : worldBtn.style.display;
+    if (shopBtn) shopBtn.style.display = active ? 'none' : shopBtn.style.display;
+    if (expandPanelBtn) expandPanelBtn.style.display = active ? 'none' : '';
+    if (mobilePanelToggle) mobilePanelToggle.style.display = active ? 'none' : '';
 
     // Audio handling
     if (active && isPlaying) { explorationAudio.pause(); combatAudio.currentTime = 0; combatAudio.play().catch(e => console.log(e)); } 
@@ -2019,11 +2030,15 @@ function updateCombatBackground() {
     const leftPanel = document.getElementById('left-panel');
     const combatScreen = document.getElementById('combat-screen');
     if (leftPanel && combatScreen) {
-        const style = window.getComputedStyle(leftPanel);
-        combatScreen.style.background = style.background;
-        combatScreen.style.backgroundColor = style.backgroundColor;
-        combatScreen.style.boxShadow = "inset 0 0 0 200vmax rgba(0,0,0,0.5)";
-        combatScreen.style.filter = 'brightness(0.8)';
+        combatScreen.style.background = 'none';
+        combatScreen.style.backgroundColor = '#050011';
+        combatScreen.style.backgroundImage = "url('img/Starry background  - Layer 02 - Stars.png'), url('img/Starry background  - Layer 01 - Void.png')";
+        combatScreen.style.backgroundRepeat = 'repeat-x';
+        combatScreen.style.backgroundSize = 'auto 100%';
+        combatScreen.style.backgroundPosition = '0 0, 0 0';
+        combatScreen.style.animation = 'spaceScroll 60s linear infinite';
+        combatScreen.style.boxShadow = 'none';
+        combatScreen.style.filter = 'none';
     }
 }
 
@@ -2042,8 +2057,13 @@ function updateCombatCamera() {
         container.style.transform = '';
         container.style.transformOrigin = '';
         container.style.margin = '20px auto';
+        container.style.transition = '';
+        combatCameraState.initialized = false;
         return;
     }
+
+    container.style.transition = 'none';
+    container.style.willChange = 'transform';
 
     const isPortrait = window.innerHeight > window.innerWidth;
     const viewW = arenaShell ? arenaShell.clientWidth : screen.clientWidth;
@@ -2055,17 +2075,20 @@ function updateCombatCamera() {
     const fitScale = Math.min(viewW / contW, viewH / contH) * 0.95;
     let scale = fitScale;
     if (!isPortrait) {
-        scale = Math.min(fitScale * 1.22, 1.0);
+        scale = Math.min(fitScale * 1.5, 1.25);
     }
     let moveX = (viewW - contW * scale) / 2;
     let moveY = (viewH - contH * scale) / 2;
 
-    if (isPortrait && combatState && now > combatCameraOverviewUntil) {
+    let hasTarget = false;
+    if (combatState && now > combatCameraOverviewUntil) {
         // Track active turn target
-        scale = Math.min(fitScale * 1.4, 1.0);
-        const targetId = (combatState.turn === 'enemy') ? 'combat-enemy' : 'combat-player';
-        const target = document.getElementById(targetId);
+        scale = Math.min(fitScale * (isPortrait ? 2.6 : 1.8), isPortrait ? 1.6 : 1.3);
+        const enemyEl = document.getElementById('combat-enemy');
+        const playerEl = document.getElementById('combat-player');
+        const target = (combatState.turn === 'enemy' ? enemyEl : playerEl) || enemyEl || playerEl;
         if (target) {
+            hasTarget = true;
             const targetX = target.offsetLeft + target.offsetWidth / 2;
             const targetY = target.offsetTop + target.offsetHeight / 2;
             moveX = (viewW / 2) - (targetX * scale);
@@ -2078,16 +2101,28 @@ function updateCombatCamera() {
     const maxX = Math.max(0, viewW - contW * scale);
     const minY = Math.min(0, viewH - contH * scale);
     const maxY = Math.max(0, viewH - contH * scale);
-    moveX = Math.min(maxX, Math.max(minX, moveX));
-    moveY = Math.min(maxY, Math.max(minY, moveY));
-
-    if (isPortrait) {
-        moveX = Math.min(maxX, Math.max(minX, moveX - 40));
+    if (!isPortrait) {
+        moveX = Math.min(maxX, Math.max(minX, moveX));
+        moveY = Math.min(maxY, Math.max(minY, moveY));
     }
 
     container.style.margin = '0';
     container.style.transformOrigin = '0 0';
     container.style.left = '0';
     container.style.top = '0';
-    container.style.transform = `translate(${moveX}px, ${moveY}px) scale(${scale})`;
+
+    if (!combatCameraState.initialized) {
+        combatCameraState = { x: moveX, y: moveY, scale, initialized: true };
+    } else if (hasTarget) {
+        combatCameraState.x = moveX;
+        combatCameraState.y = moveY;
+        combatCameraState.scale = scale;
+    } else {
+        const smooth = isPortrait ? 0.18 : 0.12;
+        combatCameraState.x += (moveX - combatCameraState.x) * smooth;
+        combatCameraState.y += (moveY - combatCameraState.y) * smooth;
+        combatCameraState.scale += (scale - combatCameraState.scale) * smooth;
+    }
+
+    container.style.transform = `translate(${combatCameraState.x}px, ${combatCameraState.y}px) scale(${combatCameraState.scale})`;
 }

@@ -732,7 +732,7 @@
         <h3 style="margin-top:0; color:#00e676;">Create Character</h3>
         <input type="text" id="new-char-name" placeholder="Character Name" maxlength="15">
         <div style="display:flex; gap:10px; justify-content:center;">
-            <button class="combat-btn" style="background:#444; font-size:12px;" onclick="document.getElementById('create-char-modal').style.display='none'">Cancel</button>
+            <button class="combat-btn" style="background:#444; font-size:12px;" onclick="closeCreateCharacter()">Cancel</button>
             <button class="combat-btn" style="background:#00e676; color:black; font-size:12px;" onclick="submitNewCharacter()">Create</button>
         </div>
     </div>

@@ -1294,9 +1294,16 @@ async function selectCharacter(charId) {
 }
 
 function createNewCharacter() {
-    document.getElementById('create-char-modal').style.display = 'flex';
-    document.getElementById('new-char-name').value = '';
-    document.getElementById('new-char-name').focus();
+    const modal = document.getElementById('create-char-modal');
+    const selection = document.getElementById('char-selection-modal');
+    if (selection) selection.style.display = 'none';
+    if (!modal) return;
+    modal.style.display = 'flex';
+    const nameInput = document.getElementById('new-char-name');
+    if (nameInput) {
+        nameInput.value = '';
+        nameInput.focus();
+    }
 }
 
 async function submitNewCharacter() {
@@ -1304,12 +1311,21 @@ async function submitNewCharacter() {
     const name = nameInput.value.trim() || "New character";
     const data = await apiPost('create_character', { name });
     if (data.status === 'success') {
-        document.getElementById('create-char-modal').style.display = 'none';
+        closeCreateCharacter();
         await loadCharacterSelection();
     } else {
         showToast(data.message || 'Cannot create character.', 'error');
     }
 }
+
+function closeCreateCharacter() {
+    const modal = document.getElementById('create-char-modal');
+    const selection = document.getElementById('char-selection-modal');
+    if (modal) modal.style.display = 'none';
+    if (selection) selection.style.display = 'flex';
+}
+
+window.closeCreateCharacter = closeCreateCharacter;
 
 window.confirmDeleteCharacter = function(charId) {
     let modal = document.getElementById('delete-confirm-modal');

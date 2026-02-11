@@ -178,9 +178,16 @@ if ($action === 'create_character') {
         echo json_encode(['status' => 'error', 'message' => 'Maximum 3 characters.']); exit;
     }
     
+    // Pick a valid world (prefer tutorial). Avoid FK failure if world_id=1 is missing.
+    $worldStmt = $pdo->query("SELECT id FROM worlds ORDER BY is_tutorial DESC, id ASC LIMIT 1");
+    $worldId = (int)$worldStmt->fetchColumn();
+    if ($worldId <= 0) {
+        echo json_encode(['status' => 'error', 'message' => 'No worlds found. Run setup_game.php or import worlds.']); exit;
+    }
+
     try {
-        $stmt = $pdo->prepare("INSERT INTO characters (user_id, name, world_id) VALUES (?, ?, 1)");
-        $stmt->execute([$userId, $name]);
+        $stmt = $pdo->prepare("INSERT INTO characters (user_id, name, world_id) VALUES (?, ?, ?)");
+        $stmt->execute([$userId, $name, $worldId]);
         $newCharId = $pdo->lastInsertId();
         // Auto-select the new character
         if (isset($_SESSION['char_id'])) {
@@ -295,10 +302,17 @@ if ($action === 'select_class') {
     $stmt = $pdo->prepare("SELECT * FROM classes WHERE id = ?");
     $stmt->execute([$classId]);
     $cls = $stmt->fetch();
-    
-    
-    $pdo->prepare("UPDATE characters SET class_id = ?, hp = ?, max_hp = ?, energy = ?, max_energy = ?, world_id = 1, tutorial_completed = 0 WHERE id = ?")
-        ->execute([$classId, $cls['base_hp'], $cls['base_hp'], $cls['base_energy'], $cls['base_energy'], $charId]);
+    if (!$cls) {
+        echo json_encode(['status' => 'error', 'message' => 'Class not found.']); exit;
+    }
+
+    // Prefer tutorial world if it exists; otherwise keep current world.
+    $worldStmt = $pdo->query("SELECT id FROM worlds WHERE is_tutorial = 1 ORDER BY id ASC LIMIT 1");
+    $tutorialWorldId = (int)$worldStmt->fetchColumn();
+    $targetWorldId = $tutorialWorldId > 0 ? $tutorialWorldId : (int)($char['world_id'] ?? 1);
+
+    $pdo->prepare("UPDATE characters SET class_id = ?, hp = ?, max_hp = ?, energy = ?, max_energy = ?, world_id = ?, tutorial_completed = 0 WHERE id = ?")
+        ->execute([$classId, $cls['base_hp'], $cls['base_hp'], $cls['base_energy'], $cls['base_energy'], $targetWorldId, $charId]);
     
     $pdo->prepare("DELETE FROM inventory WHERE character_id = ?")->execute([$charId]); // Clear inventory
     $weaponId = $classId; $armorId = ($classId==1)?5:($classId==2?6:4);

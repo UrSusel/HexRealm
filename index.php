@@ -671,6 +671,10 @@
                 order: 3;
             }
 
+            .combat-title {
+                display: none !important;
+            }
+
             #world-btn {
                 top: 10px !important;
                 right: 320px !important;

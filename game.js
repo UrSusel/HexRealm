@@ -79,26 +79,26 @@ function startGame() {
     playRandomTrack();
     isPlaying = true;
     
-    // Inject Gold Display and Shop Button if missing
+    // Inject Gold Display if missing
     if (!document.getElementById('gold-display')) {
-        const statsPanel = document.getElementById('left-panel'); // Assuming left panel exists
+        const statsPanel = document.getElementById('left-panel');
         if (statsPanel) {
             const goldDiv = document.createElement('div');
             goldDiv.id = 'gold-display';
             goldDiv.style.cssText = "font-size:18px; color:gold; margin:10px 0; font-weight:bold; text-shadow:1px 1px 0 #000;";
             goldDiv.innerText = "0 G";
-            // Insert after XP bar or somewhere visible
             const xpContainer = document.getElementById('xp-container');
             if (xpContainer) xpContainer.parentNode.insertBefore(goldDiv, xpContainer.nextSibling);
             else statsPanel.prepend(goldDiv);
         }
-        
-        // Shop Button
-        const actionArea = document.getElementById('action-area') || document.body; // Fallback
+    }
+
+    // Ensure a single shop button exists (avoid duplicate IDs on mobile)
+    if (!document.getElementById('shop-btn')) {
         const shopBtn = document.createElement('button');
         shopBtn.id = 'shop-btn';
         shopBtn.innerText = "🏰 Enter Market";
-        shopBtn.style.cssText = "position:absolute; bottom:20px; left:50%; transform:translateX(-50%); padding:10px 20px; background:gold; color:black; border:none; font-weight:bold; cursor:pointer; border-radius:5px; display:none; z-index:2000; box-shadow:0 0 10px #000;";
+        shopBtn.style.cssText = "padding:10px 20px; background:gold; color:black; border:none; font-weight:bold; cursor:pointer; border-radius:5px; display:none; box-shadow:0 0 10px #000;";
         shopBtn.onclick = () => openCityMenu();
         document.body.appendChild(shopBtn);
     }
@@ -404,18 +404,6 @@ function centerMapOnPlayer(pixelX, pixelY) {
     const moveY = (viewportHeight / 2) + offsetY - (pixelY + 64) * scale;
 
     map.style.transform = `translate(${moveX}px, ${moveY}px) scale(${scale})`;
-
-    // Debug: show live scale on mobile
-    if (isMobile) {
-        let dbg = document.getElementById('debug-scale');
-        if (!dbg) {
-            dbg = document.createElement('div');
-            dbg.id = 'debug-scale';
-            dbg.style.cssText = "position:fixed; bottom:8px; left:8px; z-index:9999; padding:4px 8px; background:rgba(0,0,0,0.6); color:#0f0; font-size:12px; border:1px solid #0f0; border-radius:4px;";
-            document.body.appendChild(dbg);
-        }
-        dbg.textContent = `scale: ${scale.toFixed(3)}`;
-    }
 }
 
 function setAnimationState(newState) {

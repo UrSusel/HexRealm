@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Feb 10, 2026 at 11:36 PM
+-- Generation Time: Feb 11, 2026 at 09:21 PM
 -- Wersja serwera: 10.4.32-MariaDB
 -- Wersja PHP: 8.0.30
 
@@ -72,20 +72,6 @@ CREATE TABLE `characters` (
   `last_seen` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   `duel_id` int(11) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Dumping data for table `characters`
---
-
-INSERT INTO `characters` (`id`, `user_id`, `name`, `class_id`, `hp`, `max_hp`, `energy`, `max_energy`, `base_attack`, `base_defense`, `stat_points`, `skill_points`, `pos_x`, `pos_y`, `world_id`, `tutorial_completed`, `xp`, `max_xp`, `level`, `steps_buffer`, `in_combat`, `enemy_hp`, `enemy_max_hp`, `combat_state`, `gold`, `last_seen`, `duel_id`) VALUES
-(8, 7, 'Ksawier', 1, 180, 180, 8, 8, 6, 3, 0, 0, 0, 0, 13, 1, 194, 250, 6, 0, 0, 58, 93, NULL, 65, '2026-02-10 22:33:11', NULL),
-(9, 8, 'Aaaaa', 2, 66, 80, 12, 12, 1, 0, 0, 0, 1, 5, 8, 1, 41, 100, 1, 5, 0, 0, 51, '{\"player_pos\":{\"x\":3,\"y\":2},\"enemy_pos\":{\"x\":3,\"y\":1},\"tiles\":[{\"x\":0,\"y\":0,\"type\":\"grass\"},{\"x\":1,\"y\":0,\"type\":\"grass2\"},{\"x\":2,\"y\":0,\"type\":\"grass\"},{\"x\":3,\"y\":0,\"type\":\"grass\"},{\"x\":4,\"y\":0,\"type\":\"grass\"},{\"x\":5,\"y\":0,\"type\":\"grass2\"},{\"x\":6,\"y\":0,\"type\":\"grass2\"},{\"x\":0,\"y\":1,\"type\":\"grass\"},{\"x\":1,\"y\":1,\"type\":\"grass\"},{\"x\":2,\"y\":1,\"type\":\"grass\"},{\"x\":3,\"y\":1,\"type\":\"grass2\"},{\"x\":4,\"y\":1,\"type\":\"grass\"},{\"x\":5,\"y\":1,\"type\":\"grass2\"},{\"x\":6,\"y\":1,\"type\":\"grass\"},{\"x\":0,\"y\":2,\"type\":\"grass2\"},{\"x\":1,\"y\":2,\"type\":\"grass\"},{\"x\":2,\"y\":2,\"type\":\"grass2\"},{\"x\":3,\"y\":2,\"type\":\"grass\"},{\"x\":4,\"y\":2,\"type\":\"grass\"},{\"x\":5,\"y\":2,\"type\":\"grass\"},{\"x\":6,\"y\":2,\"type\":\"grass\"},{\"x\":0,\"y\":3,\"type\":\"grass2\"},{\"x\":1,\"y\":3,\"type\":\"grass2\"},{\"x\":2,\"y\":3,\"type\":\"grass2\"},{\"x\":3,\"y\":3,\"type\":\"grass\"},{\"x\":4,\"y\":3,\"type\":\"grass\"},{\"x\":5,\"y\":3,\"type\":\"grass\"},{\"x\":6,\"y\":3,\"type\":\"grass\"},{\"x\":0,\"y\":4,\"type\":\"grass\"},{\"x\":1,\"y\":4,\"type\":\"water\"},{\"x\":2,\"y\":4,\"type\":\"grass2\"},{\"x\":3,\"y\":4,\"type\":\"grass\"},{\"x\":4,\"y\":4,\"type\":\"grass2\"},{\"x\":5,\"y\":4,\"type\":\"grass2\"},{\"x\":6,\"y\":4,\"type\":\"grass\"}],\"turn\":\"player\",\"player_ap\":0,\"enemy_ap\":0,\"is_defending\":false,\"enemy_type\":\"standard\",\"enemy_name\":\"Rat\",\"enemy_level\":1,\"enemy_dmg_mult\":1,\"enemy_heals\":0}', 0, '2026-02-08 17:40:59', NULL),
-(10, 9, 'Susel', 1, 140, 150, 8, 8, 1, 0, 0, 0, 0, 0, 8, 1, 25, 100, 1, 6, 0, 0, 30, NULL, 0, '2026-02-07 17:43:30', NULL),
-(11, 10, 'TenTyp', 1, 150, 150, 8, 8, 1, 0, 0, 0, 0, 0, 8, 1, 40, 100, 1, 0, 0, 0, 32, NULL, 0, '2026-02-07 20:38:48', NULL),
-(12, 11, 'pawel', 2, 80, 80, 12, 12, 1, 0, 3, 0, 20, 48, 8, 1, 46, 120, 2, 0, 0, 0, 60, '{\"player_pos\":{\"x\":3,\"y\":2},\"enemy_pos\":{\"x\":3,\"y\":3},\"tiles\":[{\"x\":0,\"y\":0,\"type\":\"grass2\"},{\"x\":1,\"y\":0,\"type\":\"grass2\"},{\"x\":2,\"y\":0,\"type\":\"grass2\"},{\"x\":3,\"y\":0,\"type\":\"grass\"},{\"x\":4,\"y\":0,\"type\":\"water\"},{\"x\":5,\"y\":0,\"type\":\"grass\"},{\"x\":6,\"y\":0,\"type\":\"grass\"},{\"x\":0,\"y\":1,\"type\":\"grass\"},{\"x\":1,\"y\":1,\"type\":\"water\"},{\"x\":2,\"y\":1,\"type\":\"grass\"},{\"x\":3,\"y\":1,\"type\":\"water\"},{\"x\":4,\"y\":1,\"type\":\"grass\"},{\"x\":5,\"y\":1,\"type\":\"grass2\"},{\"x\":6,\"y\":1,\"type\":\"grass\"},{\"x\":0,\"y\":2,\"type\":\"grass\"},{\"x\":1,\"y\":2,\"type\":\"grass\"},{\"x\":2,\"y\":2,\"type\":\"grass\"},{\"x\":3,\"y\":2,\"type\":\"grass\"},{\"x\":4,\"y\":2,\"type\":\"grass2\"},{\"x\":5,\"y\":2,\"type\":\"grass\"},{\"x\":6,\"y\":2,\"type\":\"grass\"},{\"x\":0,\"y\":3,\"type\":\"water\"},{\"x\":1,\"y\":3,\"type\":\"grass\"},{\"x\":2,\"y\":3,\"type\":\"grass2\"},{\"x\":3,\"y\":3,\"type\":\"grass\"},{\"x\":4,\"y\":3,\"type\":\"grass\"},{\"x\":5,\"y\":3,\"type\":\"grass2\"},{\"x\":6,\"y\":3,\"type\":\"grass\"},{\"x\":0,\"y\":4,\"type\":\"grass\"},{\"x\":1,\"y\":4,\"type\":\"grass\"},{\"x\":2,\"y\":4,\"type\":\"grass\"},{\"x\":3,\"y\":4,\"type\":\"grass\"},{\"x\":4,\"y\":4,\"type\":\"grass\"},{\"x\":5,\"y\":4,\"type\":\"grass\"},{\"x\":6,\"y\":4,\"type\":\"grass\"}],\"turn\":\"player\",\"player_ap\":2,\"enemy_ap\":0,\"is_defending\":false,\"enemy_type\":\"green\",\"enemy_name\":\"Leaf Goblin\",\"enemy_level\":2,\"enemy_dmg_mult\":1,\"enemy_heals\":0}', 1, '2026-02-10 19:50:40', NULL),
-(13, 12, 'bozy', 2, 70, 80, 7, 12, 1, 0, 0, 0, 33, 2, 8, 1, 70, 100, 1, 6, 1, 37, 37, '{\"player_pos\":{\"x\":1,\"y\":2},\"enemy_pos\":{\"x\":5,\"y\":2},\"tiles\":[{\"x\":0,\"y\":0,\"type\":\"grass\"},{\"x\":1,\"y\":0,\"type\":\"grass\"},{\"x\":2,\"y\":0,\"type\":\"grass\"},{\"x\":3,\"y\":0,\"type\":\"water\"},{\"x\":4,\"y\":0,\"type\":\"grass\"},{\"x\":5,\"y\":0,\"type\":\"grass\"},{\"x\":6,\"y\":0,\"type\":\"grass\"},{\"x\":0,\"y\":1,\"type\":\"grass\"},{\"x\":1,\"y\":1,\"type\":\"grass\"},{\"x\":2,\"y\":1,\"type\":\"grass\"},{\"x\":3,\"y\":1,\"type\":\"grass\"},{\"x\":4,\"y\":1,\"type\":\"grass2\"},{\"x\":5,\"y\":1,\"type\":\"grass\"},{\"x\":6,\"y\":1,\"type\":\"grass\"},{\"x\":0,\"y\":2,\"type\":\"grass\"},{\"x\":1,\"y\":2,\"type\":\"grass\"},{\"x\":2,\"y\":2,\"type\":\"grass2\"},{\"x\":3,\"y\":2,\"type\":\"grass\"},{\"x\":4,\"y\":2,\"type\":\"grass\"},{\"x\":5,\"y\":2,\"type\":\"grass\"},{\"x\":6,\"y\":2,\"type\":\"grass\"},{\"x\":0,\"y\":3,\"type\":\"grass2\"},{\"x\":1,\"y\":3,\"type\":\"grass2\"},{\"x\":2,\"y\":3,\"type\":\"grass2\"},{\"x\":3,\"y\":3,\"type\":\"grass2\"},{\"x\":4,\"y\":3,\"type\":\"grass\"},{\"x\":5,\"y\":3,\"type\":\"grass\"},{\"x\":6,\"y\":3,\"type\":\"grass2\"},{\"x\":0,\"y\":4,\"type\":\"water\"},{\"x\":1,\"y\":4,\"type\":\"grass\"},{\"x\":2,\"y\":4,\"type\":\"grass\"},{\"x\":3,\"y\":4,\"type\":\"grass2\"},{\"x\":4,\"y\":4,\"type\":\"grass\"},{\"x\":5,\"y\":4,\"type\":\"grass2\"},{\"x\":6,\"y\":4,\"type\":\"grass\"}],\"turn\":\"player\",\"player_ap\":2,\"enemy_ap\":2,\"is_defending\":false}', 0, '2026-02-07 23:17:14', NULL),
-(14, 13, 'tak', 3, 66, 100, 9, 10, 1, 0, 0, 0, 2, 6, 12, 1, 66, 100, 1, 4, 0, 0, 36, '{\"player_pos\":{\"x\":3,\"y\":2},\"enemy_pos\":{\"x\":3,\"y\":1},\"tiles\":[{\"x\":0,\"y\":0,\"type\":\"grass\"},{\"x\":1,\"y\":0,\"type\":\"grass\"},{\"x\":2,\"y\":0,\"type\":\"grass\"},{\"x\":3,\"y\":0,\"type\":\"grass\"},{\"x\":4,\"y\":0,\"type\":\"grass\"},{\"x\":5,\"y\":0,\"type\":\"grass\"},{\"x\":6,\"y\":0,\"type\":\"grass2\"},{\"x\":0,\"y\":1,\"type\":\"grass2\"},{\"x\":1,\"y\":1,\"type\":\"grass\"},{\"x\":2,\"y\":1,\"type\":\"grass\"},{\"x\":3,\"y\":1,\"type\":\"grass\"},{\"x\":4,\"y\":1,\"type\":\"grass\"},{\"x\":5,\"y\":1,\"type\":\"grass\"},{\"x\":6,\"y\":1,\"type\":\"grass\"},{\"x\":0,\"y\":2,\"type\":\"grass2\"},{\"x\":1,\"y\":2,\"type\":\"grass\"},{\"x\":2,\"y\":2,\"type\":\"grass\"},{\"x\":3,\"y\":2,\"type\":\"grass\"},{\"x\":4,\"y\":2,\"type\":\"grass2\"},{\"x\":5,\"y\":2,\"type\":\"grass\"},{\"x\":6,\"y\":2,\"type\":\"grass2\"},{\"x\":0,\"y\":3,\"type\":\"grass\"},{\"x\":1,\"y\":3,\"type\":\"water\"},{\"x\":2,\"y\":3,\"type\":\"grass2\"},{\"x\":3,\"y\":3,\"type\":\"grass\"},{\"x\":4,\"y\":3,\"type\":\"grass\"},{\"x\":5,\"y\":3,\"type\":\"grass2\"},{\"x\":6,\"y\":3,\"type\":\"grass2\"},{\"x\":0,\"y\":4,\"type\":\"grass2\"},{\"x\":1,\"y\":4,\"type\":\"grass2\"},{\"x\":2,\"y\":4,\"type\":\"grass\"},{\"x\":3,\"y\":4,\"type\":\"grass\"},{\"x\":4,\"y\":4,\"type\":\"grass2\"},{\"x\":5,\"y\":4,\"type\":\"grass2\"},{\"x\":6,\"y\":4,\"type\":\"grass\"}],\"turn\":\"player\",\"player_ap\":0,\"enemy_ap\":0,\"is_defending\":false,\"enemy_type\":\"standard\",\"enemy_name\":\"Rat\",\"enemy_level\":2,\"enemy_dmg_mult\":1,\"enemy_heals\":0}', 0, '2026-02-09 08:12:05', NULL),
-(15, 14, 'Alten', 2, 22, 85, 9, 13, 1, 1, 0, 0, 0, 46, 8, 1, 77, 120, 2, 0, 0, 0, 41, '{\"player_pos\":{\"x\":3,\"y\":2},\"enemy_pos\":{\"x\":3,\"y\":3},\"tiles\":[{\"x\":0,\"y\":0,\"type\":\"grass\"},{\"x\":1,\"y\":0,\"type\":\"grass\"},{\"x\":2,\"y\":0,\"type\":\"grass\"},{\"x\":3,\"y\":0,\"type\":\"grass2\"},{\"x\":4,\"y\":0,\"type\":\"grass\"},{\"x\":5,\"y\":0,\"type\":\"grass\"},{\"x\":6,\"y\":0,\"type\":\"water\"},{\"x\":0,\"y\":1,\"type\":\"grass\"},{\"x\":1,\"y\":1,\"type\":\"grass\"},{\"x\":2,\"y\":1,\"type\":\"grass\"},{\"x\":3,\"y\":1,\"type\":\"grass\"},{\"x\":4,\"y\":1,\"type\":\"water\"},{\"x\":5,\"y\":1,\"type\":\"grass\"},{\"x\":6,\"y\":1,\"type\":\"grass\"},{\"x\":0,\"y\":2,\"type\":\"grass\"},{\"x\":1,\"y\":2,\"type\":\"grass\"},{\"x\":2,\"y\":2,\"type\":\"grass\"},{\"x\":3,\"y\":2,\"type\":\"grass\"},{\"x\":4,\"y\":2,\"type\":\"grass2\"},{\"x\":5,\"y\":2,\"type\":\"grass\"},{\"x\":6,\"y\":2,\"type\":\"grass\"},{\"x\":0,\"y\":3,\"type\":\"grass2\"},{\"x\":1,\"y\":3,\"type\":\"grass2\"},{\"x\":2,\"y\":3,\"type\":\"water\"},{\"x\":3,\"y\":3,\"type\":\"grass\"},{\"x\":4,\"y\":3,\"type\":\"grass\"},{\"x\":5,\"y\":3,\"type\":\"grass2\"},{\"x\":6,\"y\":3,\"type\":\"grass\"},{\"x\":0,\"y\":4,\"type\":\"grass\"},{\"x\":1,\"y\":4,\"type\":\"grass\"},{\"x\":2,\"y\":4,\"type\":\"grass\"},{\"x\":3,\"y\":4,\"type\":\"grass\"},{\"x\":4,\"y\":4,\"type\":\"grass\"},{\"x\":5,\"y\":4,\"type\":\"grass\"},{\"x\":6,\"y\":4,\"type\":\"grass\"}],\"turn\":\"player\",\"player_ap\":0,\"enemy_ap\":0,\"is_defending\":false,\"enemy_type\":\"green\",\"enemy_name\":\"Leaf Goblin\",\"enemy_level\":1,\"enemy_dmg_mult\":1,\"enemy_heals\":0}', 0, '2026-02-09 18:13:15', NULL);
 
 -- --------------------------------------------------------
 
@@ -172,8 +158,6 @@ CREATE TABLE `inventory` (
 --
 
 INSERT INTO `inventory` (`id`, `character_id`, `item_id`, `quantity`, `is_equipped`) VALUES
-(35, 8, 1, 1, 1),
-(36, 8, 5, 1, 1),
 (39, 9, 2, 1, 1),
 (40, 9, 6, 1, 1),
 (41, 9, 7, 3, 0),
@@ -201,7 +185,16 @@ INSERT INTO `inventory` (`id`, `character_id`, `item_id`, `quantity`, `is_equipp
 (63, 15, 2, 1, 1),
 (64, 15, 6, 1, 1),
 (65, 15, 7, 2, 0),
-(71, 12, 2, 1, 0);
+(71, 12, 2, 1, 0),
+(85, 8, 7, 1, 0),
+(86, 8, 7, 1, 0),
+(87, 8, 27, 1, 1),
+(88, 8, 46, 1, 1),
+(89, 8, 8, 1, 0),
+(90, 8, 7, 1, 0),
+(91, 8, 7, 1, 0),
+(92, 8, 7, 1, 0),
+(93, 8, 21, 1, 0);
 
 -- --------------------------------------------------------
 
@@ -226,19 +219,43 @@ CREATE TABLE `items` (
 --
 
 INSERT INTO `items` (`id`, `name`, `type`, `power`, `price`, `rarity`, `optimal_class_id`, `icon`, `description`) VALUES
-(1, 'Rusty Sword', 'weapon', 10, 20, 'common', 1, '⚔️', 'A basic rusty sword.'),
-(2, 'Old Staff', 'weapon', 12, 25, 'common', 2, '🪄', 'A wooden staff.'),
-(3, 'Dagger', 'weapon', 9, 18, 'common', 3, '🗡️', 'Sharp but small.'),
-(4, 'Leather Jacket', 'armor', 5, 15, 'common', 3, '🧥', 'Basic protection.'),
-(5, 'Plate Armor', 'armor', 15, 50, 'common', 1, '🛡️', 'Heavy iron armor.'),
-(6, 'Apprentice Robe', 'armor', 3, 12, 'common', 2, '🥋', 'Cloth robe.'),
+(1, 'Rusty Sword', 'weapon', 8, 15, 'common', 1, '⚔️', 'A worn blade, barely sharp.'),
+(2, 'Wooden Staff', 'weapon', 10, 20, 'common', 2, '🪄', 'Simple oak staff.'),
+(3, 'Rusty Dagger', 'weapon', 7, 12, 'common', 3, '🗡️', 'Dirty and dull.'),
+(4, 'Leather Tunic', 'armor', 3, 15, 'common', 3, '🧥', 'Basic hide protection.'),
+(5, 'Rusty Chainmail', 'armor', 8, 35, 'common', 1, '🛡️', 'Old but functional.'),
+(6, 'Cloth Robe', 'armor', 2, 10, 'common', 2, '🥋', 'Simple linen cloth.'),
 (7, 'Health Potion', 'consumable', 50, 25, 'common', NULL, '🩹', 'Heals 50 HP'),
 (8, 'Bandage', 'consumable', 20, 10, 'common', NULL, '🧪', 'Heals 20 HP'),
 (20, 'Rat Tail', 'drop', 0, 2, 'common', NULL, '🐀', 'A tail from a sewer rat.'),
 (21, 'Goblin Ear', 'drop', 0, 5, 'common', NULL, '👂', 'A trophy from a goblin.'),
 (22, 'Bandit Insignia', 'drop', 0, 10, 'uncommon', NULL, '🎖️', 'Stolen from a desert bandit.'),
 (23, 'Lava Core', 'drop', 0, 25, 'rare', NULL, '🔥', 'Warm to the touch.'),
-(24, 'Demon Horn', 'drop', 0, 50, 'epic', NULL, '😈', 'Radiates dark energy.');
+(24, 'Demon Horn', 'drop', 0, 50, 'epic', NULL, '😈', 'Radiates dark energy.'),
+(25, 'Iron Sword', 'weapon', 15, 50, 'common', 1, '⚔️', 'Reliable steel blade.'),
+(26, 'Steel Longsword', 'weapon', 22, 120, 'uncommon', 1, '⚔️', 'Well-crafted weapon.'),
+(27, 'Silver Greatsword', 'weapon', 30, 250, 'rare', 1, '⚔️', 'Polished silver blade.'),
+(28, 'Dragonbone Claymore', 'weapon', 40, 500, 'epic', 1, '⚔️', 'Forged from dragon remains.'),
+(29, 'Carved Staff', 'weapon', 18, 65, 'common', 2, '🪄', 'Enchanted runes carved in.'),
+(30, 'Crystal Staff', 'weapon', 25, 140, 'uncommon', 2, '🪄', 'Focuses magical energy.'),
+(31, 'Arcane Scepter', 'weapon', 35, 280, 'rare', 2, '🪄', 'Amplifies spellcasting.'),
+(32, 'Staff of the Void', 'weapon', 45, 550, 'epic', 2, '🪄', 'Channels dark magic.'),
+(33, 'Steel Dagger', 'weapon', 14, 45, 'common', 3, '🗡️', 'Lightweight and sharp.'),
+(34, 'Twin Blades', 'weapon', 20, 110, 'uncommon', 3, '🗡️', 'Dual-wielded daggers.'),
+(35, 'Assassin Edge', 'weapon', 28, 230, 'rare', 3, '🗡️', 'Silent and deadly.'),
+(36, 'Shadowfang', 'weapon', 38, 480, 'epic', 3, '🗡️', 'Infused with shadow magic.'),
+(37, 'Reinforced Leather', 'armor', 6, 50, 'common', 3, '🧥', 'Studded leather vest.'),
+(38, 'Hunter Garb', 'armor', 10, 110, 'uncommon', 3, '🧥', 'Crafted for agility.'),
+(39, 'Shadow Leather', 'armor', 14, 220, 'rare', 3, '🧥', 'Dark treated hide.'),
+(40, 'Dragonhide Armor', 'armor', 20, 450, 'epic', 3, '🧥', 'Scales of ancient dragons.'),
+(41, 'Apprentice Robe', 'armor', 5, 40, 'common', 2, '🥋', 'Reinforced with thread.'),
+(42, 'Mage Vestment', 'armor', 9, 95, 'uncommon', 2, '🥋', 'Woven with magic.'),
+(43, 'Enchanted Mantle', 'armor', 13, 200, 'rare', 2, '🥋', 'Shimmers with arcane power.'),
+(44, 'Robes of the Archmage', 'armor', 18, 420, 'epic', 2, '🥋', 'Legendary spellcaster garb.'),
+(45, 'Iron Plate', 'armor', 12, 80, 'common', 1, '🛡️', 'Solid iron protection.'),
+(46, 'Steel Armor', 'armor', 17, 160, 'uncommon', 1, '🛡️', 'Full plate steel.'),
+(47, 'Knight Plate', 'armor', 22, 300, 'rare', 1, '🛡️', 'Ornate royal armor.'),
+(48, 'Dragonscale Plate', 'armor', 30, 600, 'epic', 1, '🛡️', 'Impenetrable dragon scales.');
 
 -- --------------------------------------------------------
 
@@ -39830,13 +39847,13 @@ ALTER TABLE `duel_requests`
 -- AUTO_INCREMENT for table `inventory`
 --
 ALTER TABLE `inventory`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=76;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=94;
 
 --
 -- AUTO_INCREMENT for table `items`
 --
 ALTER TABLE `items`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=25;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=49;
 
 --
 -- AUTO_INCREMENT for table `reputation`

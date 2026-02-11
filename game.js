@@ -26,6 +26,7 @@ let isProcessingTurn = false;
 let combatCameraOverviewUntil = 0;
 let combatCameraState = { x: 0, y: 0, scale: 1, initialized: false };
 let mapScaleCache = { w: 0, h: 0, portrait: null, landscape: null };
+let isMobile = Math.min(window.innerWidth, window.innerHeight) <= 900;
 
 // --- AUDIO ---
 const AUDIO_PATHS = {
@@ -105,6 +106,15 @@ function startGame() {
 
     const btn = document.getElementById('music-btn');
     if(btn) { btn.innerText = '🔊'; btn.classList.add('playing'); }
+    
+    // Show mobile portrait disclaimer on mobile devices
+    if (isMobile) {
+        const disclaimer = document.getElementById('mobile-disclaimer-modal');
+        if (disclaimer) {
+            disclaimer.style.display = 'flex';
+        }
+    }
+    
     initGame();
     updateDayNightCycle();
     setInterval(updateDayNightCycle, 60000);
@@ -386,7 +396,7 @@ function centerMapOnPlayer(pixelX, pixelY) {
     let scale = 1;
     let offsetY = 0;
     const isPortrait = window.innerHeight > window.innerWidth;
-    const isMobile = Math.min(window.innerWidth, window.innerHeight) <= 900;
+    isMobile = Math.min(window.innerWidth, window.innerHeight) <= 900;
 
     if (isMobile) {
         scale = isPortrait ? 0.68 : 0.62;
@@ -2040,7 +2050,7 @@ function updateCombatCamera() {
     const arenaShell = document.getElementById('combat-arena-shell');
     if (!container || !screen) return;
 
-    const isMobile = Math.min(window.innerWidth, window.innerHeight) <= 900;
+    isMobile = Math.min(window.innerWidth, window.innerHeight) <= 900;
     if (!isMobile) {
         container.style.transform = '';
         container.style.transformOrigin = '';

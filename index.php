@@ -447,8 +447,10 @@
             
             /* Move buttons with panel in portrait mode */
             #world-btn, #shop-btn {
+                position: fixed !important;
+                z-index: 10001 !important;
                 transition: bottom 0.3s ease-in-out;
-                bottom: calc(35vh + 20px + env(safe-area-inset-bottom)) !important;
+                bottom: calc(360px + env(safe-area-inset-bottom)) !important;
             }
             #game-layout.panel-collapsed #left-panel #world-btn,
             #game-layout.panel-collapsed #left-panel #shop-btn {
@@ -462,11 +464,13 @@
 
             /* Adjust shop button for portrait */
             #shop-btn {
-                left: auto !important;
-                right: 20px !important;
-                bottom: calc(35vh + 20px + env(safe-area-inset-bottom)) !important;
-                padding: 5px 8px;
-                font-size: 10px;
+                left: 50% !important;
+                right: auto !important;
+                transform: translateX(-50%) !important;
+                bottom: calc(360px + env(safe-area-inset-bottom)) !important;
+                padding: 8px 15px;
+                font-size: 12px;
+                z-index: 10001 !important;
             }
 
             #shop-modal .modal-panel {
@@ -518,13 +522,13 @@
                 position: fixed;
                 z-index: 3100;
             }
-
             #shop-btn {
-                left: 10px !important;
+                left: 50% !important;
                 right: auto !important;
                 bottom: calc(10px + env(safe-area-inset-bottom)) !important;
+                transform: translateX(-50%) !important;
                 position: fixed;
-                z-index: 3100;
+                z-index: 10001;
             }
 
             #char-selection-modal .char-selection {
@@ -681,7 +685,7 @@
                 left: auto !important;
                 bottom: auto !important;
                 position: fixed;
-                z-index: 3100;
+                z-index: 10001;
             }
             #game-layout.panel-collapsed #world-btn {
                 right: 10px !important;
@@ -693,7 +697,7 @@
                 bottom: calc(20px + env(safe-area-inset-bottom)) !important;
                 transform: translateX(-50%) !important;
                 position: fixed;
-                z-index: 3100;
+                z-index: 10001;
             }
         }
     </style>
@@ -731,6 +735,15 @@
             <button class="combat-btn" style="background:#444; font-size:12px;" onclick="document.getElementById('create-char-modal').style.display='none'">Cancel</button>
             <button class="combat-btn" style="background:#00e676; color:black; font-size:12px;" onclick="submitNewCharacter()">Create</button>
         </div>
+    </div>
+</div>
+
+<div id="mobile-disclaimer-modal" class="small-modal" style="z-index:10002;">
+    <div class="small-modal-content" style="width:320px;">
+        <h3 style="margin-top:0; color:#ffd700;">📱 Best Experience</h3>
+        <p style="margin:15px 0; font-size:14px; color:#e0e0e0;">For best experience, please switch to <strong>Portrait Mode</strong> 📲</p>
+        <p style="margin:15px 0; font-size:12px; color:#888;">Flip your phone and rotate to portrait for optimal gameplay.</p>
+        <button class="combat-btn" style="background:#00e676; color:black; width:100%; margin-top:10px;" onclick="document.getElementById('mobile-disclaimer-modal').style.display='none'">Got it!</button>
     </div>
 </div>
 

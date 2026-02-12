@@ -158,7 +158,7 @@
         .icon-btn img { width: 32px; height: 32px; image-rendering: pixelated; }
 
         /* Modale */
-        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 3200; display: none; flex-direction: column; align-items: center; justify-content: center; color: white; }
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 10050; display: none; flex-direction: column; align-items: center; justify-content: center; color: white; }
         #combat-screen.modal { background: transparent !important; background-color: transparent !important; }
         #combat-screen {
             background-color: #050011;
@@ -297,7 +297,7 @@
         @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 
         /* --- SMALL MODAL (INPUT) --- */
-        .small-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 3000; display: none; align-items: center; justify-content: center; }
+        .small-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 10050; display: none; align-items: center; justify-content: center; }
         .small-modal-content { background: #1e1e1e; padding: 25px; border-radius: 8px; border: 1px solid #333; width: 300px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
         .small-modal input { width: 100%; padding: 10px; margin: 15px 0; background: #252525; border: 1px solid #444; color: white; border-radius: 4px; box-sizing: border-box; }
 

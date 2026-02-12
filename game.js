@@ -60,6 +60,10 @@ const ANIMATION_SPEED = 100; // Animation frame speed stays the same
 const MOVEMENT_SPEED_PX = 300; // Doubled to match the doubled distance
 let combatAnimInterval = null;
 let combatFrameIndex = 0;
+let pvpActionInFlight = false;
+let pvpPollInFlight = false;
+let pvpLastActionAt = 0;
+const PVP_ACTION_COOLDOWN_MS = 250;
 
 function playSoundEffect(category, damageValue = 0) {
     let src = '';
@@ -516,6 +520,10 @@ async function handleInventoryClick(item) {
     // Consumables - use directly
     if (item.type === 'consumable') {
         if (gameState.in_combat) {
+            if (!combatState || combatState.turn !== 'player' || isProcessingTurn) {
+                showToast('Wait for your turn.', 'error');
+                return;
+            }
             useItem(item.item_id);
         } else {
             const res = await apiPost('use_item', { item_id: item.item_id });
@@ -658,6 +666,9 @@ function toggleCombatMode(active, currentHp, enemyHp = 0) {
     const mobilePanelToggle = document.getElementById('mobile-panel-toggle');
     inCombatMode = active; gameState.in_combat = active;
     if (active) isProcessingTurn = false;
+    pvpActionInFlight = false;
+    pvpPollInFlight = false;
+    pvpLastActionAt = 0;
     if (document.body) document.body.classList.toggle('combat-active', active);
 
     if (gameLayout) gameLayout.style.display = active ? 'none' : 'flex';
@@ -791,7 +802,7 @@ function updateCombatEntity(pos, type, container) {
         
         if (type === 'enemy') { 
             el.style.transform = "scaleX(-1)"; 
-            el.onclick = () => { if(combatState.turn === 'player') { if(gameState.is_pvp) handlePvPAttack(); else handleCombatAttack(); } }; 
+            el.onclick = () => { if (combatState.turn === 'player') { if (gameState.is_pvp) handlePvPAttack(); else handleCombatAttack(); } }; 
         }
         container.appendChild(el);
     }
@@ -1014,6 +1025,10 @@ async function handleEnemyTurn() {
 
 async function useItem(itemId) {
     if (!inCombatMode) return;
+    if (!combatState || combatState.turn !== 'player' || isProcessingTurn) {
+        showToast('Wait for your turn.', 'error');
+        return;
+    }
     const res = await fetch('api.php', { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1117,8 +1132,8 @@ window.switchTab = function(name) {
 
 function toggleSettings() {
     const modal = document.getElementById('settings-modal');
-    if (modal.style.display === 'flex') modal.style.display = 'none';
-    else modal.style.display = 'flex';
+    const displayModal = modal.style.display;
+    modal.style.display = displayModal === 'flex' ? 'none' : 'flex';
 }
 
 function playMusic() {
@@ -1849,71 +1864,106 @@ window.respondDuel = async function(reqId, response) {
 
 async function pollPvPState() {
     if (!gameState.is_pvp || !gameState.in_combat) return;
+    if (pvpPollInFlight) return;
+    pvpPollInFlight = true;
     
-    const res = await apiPost('get_duel_state');
-    if (res.status === 'ended') {
-        if (res.hp !== undefined) gameState.hp = parseInt(res.hp);
-        toggleCombatMode(false);
-        checkLifeStatus();
-        if (gameState.hp > 0) showToast(res.message || "Duel ended.");
-        return;
-    }
-    
-    if (res.status === 'success') {
-        const oldHp = gameState.hp;
-        combatState = res.combat_state;
-        gameState.hp = parseInt(res.my_hp);
-        gameState.enemy_hp = parseInt(res.enemy_hp);
-        gameState.enemy_max_hp = parseInt(res.enemy_max_hp);
-        combatState.turn_remaining = res.turn_remaining;
-        
-        renderCombatArena();
-        updateBar('combat-hp-bar', gameState.hp, gameState.max_hp);
-        updateBar('combat-enemy-fill', gameState.enemy_hp, gameState.enemy_max_hp);
-        document.getElementById('combat-hp').innerText = gameState.hp;
-        document.getElementById('enemy-hp').innerText = gameState.enemy_hp;
-        
-        // Detect damage taken (Visuals/Audio for victim)
-        if (gameState.hp < oldHp) {
-            const dmg = oldHp - gameState.hp;
-            playSoundEffect('hit');
-            playSoundEffect('damage', dmg);
-            const playerEl = document.getElementById('combat-player');
-            if (playerEl) {
-                spawnCombatParticles(playerEl, '#d32f2f');
-                showFloatingDamage(playerEl, dmg, '#ff1744');
-                playerEl.style.filter = "brightness(0.5) sepia(1) hue-rotate(-50deg) saturate(5)";
-                setTimeout(() => { playerEl.style.filter = ""; }, 200);
-            }
+    try {
+        const res = await apiPost('get_duel_state');
+        if (res.status === 'ended') {
+            if (res.hp !== undefined) gameState.hp = parseInt(res.hp);
+            pvpActionInFlight = false;
+            toggleCombatMode(false);
+            checkLifeStatus();
+            if (gameState.hp > 0) showToast(res.message || "Duel ended.");
+            return;
         }
         
-        // Log is handled in renderCombatArena -> updateApDisplay
+        if (res.status === 'success') {
+            const oldHp = gameState.hp;
+            combatState = res.combat_state;
+            gameState.hp = parseInt(res.my_hp);
+            gameState.enemy_hp = parseInt(res.enemy_hp);
+            gameState.enemy_max_hp = parseInt(res.enemy_max_hp);
+            combatState.turn_remaining = res.turn_remaining;
+            
+            renderCombatArena();
+            updateBar('combat-hp-bar', gameState.hp, gameState.max_hp);
+            updateBar('combat-enemy-fill', gameState.enemy_hp, gameState.enemy_max_hp);
+            document.getElementById('combat-hp').innerText = gameState.hp;
+            document.getElementById('enemy-hp').innerText = gameState.enemy_hp;
+            
+            // Detect damage taken (Visuals/Audio for victim)
+            if (gameState.hp < oldHp) {
+                const dmg = oldHp - gameState.hp;
+                playSoundEffect('hit');
+                playSoundEffect('damage', dmg);
+                const playerEl = document.getElementById('combat-player');
+                if (playerEl) {
+                    spawnCombatParticles(playerEl, '#d32f2f');
+                    showFloatingDamage(playerEl, dmg, '#ff1744');
+                    playerEl.style.filter = "brightness(0.5) sepia(1) hue-rotate(-50deg) saturate(5)";
+                    setTimeout(() => { playerEl.style.filter = ""; }, 200);
+                }
+            }
+            
+            // Log is handled in renderCombatArena -> updateApDisplay
+        }
+    } finally {
+        pvpPollInFlight = false;
     }
     
     setTimeout(pollPvPState, 500);
 }
 
-async function handlePvPMove(x, y) { await apiPost('pvp_action', { sub_action: 'move', x, y }); }
+function canPvPAct() {
+    if (!gameState.is_pvp || !gameState.in_combat || !combatState) return false;
+    if (combatState.turn !== 'player') return false;
+    if (pvpActionInFlight || pvpPollInFlight) return false;
+    const now = Date.now();
+    if (now - pvpLastActionAt < PVP_ACTION_COOLDOWN_MS) return false;
+    return true;
+}
+
+async function handlePvPMove(x, y) {
+    if (!canPvPAct()) return;
+    pvpActionInFlight = true;
+    pvpLastActionAt = Date.now();
+    try {
+        const res = await apiPost('pvp_action', { sub_action: 'move', x, y });
+        if (res.status !== 'success') showToast(res.message || 'Invalid move', 'error');
+    } finally {
+        pvpActionInFlight = false;
+    }
+    pollPvPState();
+}
 
 async function handlePvPAttack() { 
-    const res = await apiPost('pvp_action', { sub_action: 'attack' });
-    if (res.status === 'success') {
-        playSoundEffect('hit');
-        const enemyEl = document.getElementById('combat-enemy');
-        if (enemyEl && res.dmg) {
-             spawnCombatParticles(enemyEl, '#ffffff'); 
-             showFloatingDamage(enemyEl, res.dmg, '#ffeb3b');
+    if (!canPvPAct()) return;
+    pvpActionInFlight = true;
+    pvpLastActionAt = Date.now();
+    try {
+        const res = await apiPost('pvp_action', { sub_action: 'attack' });
+        if (res.status === 'success') {
+            playSoundEffect('hit');
+            const enemyEl = document.getElementById('combat-enemy');
+            if (enemyEl && res.dmg) {
+                 spawnCombatParticles(enemyEl, '#ffffff'); 
+                 showFloatingDamage(enemyEl, res.dmg, '#ffeb3b');
+            }
+            if (res.win) {
+                 showToast("You won the duel!");
+                 setTimeout(() => {
+                     toggleCombatMode(false);
+                     initGame(); // Refresh state to get XP/Level up
+                 }, 1500);
+            }
+        } else {
+            showToast(res.message, 'error');
         }
-        if (res.win) {
-             showToast("You won the duel!");
-             setTimeout(() => {
-                 toggleCombatMode(false);
-                 initGame(); // Refresh state to get XP/Level up
-             }, 1500);
-        }
-    } else {
-        showToast(res.message, 'error');
+    } finally {
+        pvpActionInFlight = false;
     }
+    pollPvPState();
 }
 
 

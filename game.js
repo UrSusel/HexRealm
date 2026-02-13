@@ -48,13 +48,22 @@ const AUDIO_PATHS = {
     combatMusic: "assets/combat/If It's a Fight You Want.ogg"
 };
 
-const playlist = ['assets/Journey Across the Blue.ogg', 'assets/World Travelers.ogg'];
+const playlist = [
+    'assets/Journey Across the Blue.ogg',
+    'assets/World Travelers.ogg',
+    'assets/Origins.ogg',
+    'assets/Smooth As Glass.ogg',
+    "assets/We're Bird People Now.ogg"
+];
 let explorationAudio = new Audio();
 let combatAudio = new Audio(AUDIO_PATHS.combatMusic);
+let waitingAudio = new Audio('img/Waiting.ogg');
 combatAudio.loop = true;
+waitingAudio.loop = true;
 let isPlaying = false;
 explorationAudio.volume = 0.2;
 combatAudio.volume = 0.2;
+waitingAudio.volume = 0.2;
 let sfxVolume = 0.3;
 
 let stepInterval = null;
@@ -93,6 +102,7 @@ function startGame() {
     document.getElementById('start-screen').style.display = 'none';
     document.getElementById('game-layout').style.display = 'flex';
     applyResponsiveStyles();
+    stopWaitingMusic();
     playRandomTrack();
     isPlaying = true;
     
@@ -1169,22 +1179,42 @@ function playMusic() {
 }
 
 function stopMusic() {
-    explorationAudio.pause(); combatAudio.pause();
+    explorationAudio.pause(); combatAudio.pause(); waitingAudio.pause();
     isPlaying = false;
 }
 
-function setVolume(val) { explorationAudio.volume = val; combatAudio.volume = val; }
+function setVolume(val) { explorationAudio.volume = val; combatAudio.volume = val; waitingAudio.volume = val; }
 function setSfxVolume(val) { sfxVolume = val; }
 function playRandomTrack() { let next = Math.floor(Math.random() * playlist.length); explorationAudio.src = playlist[next]; explorationAudio.play().catch(e => console.log("Autoplay blocked:", e)); }
 explorationAudio.addEventListener('ended', playRandomTrack);
+
+function playWaitingMusic() {
+    waitingAudio.currentTime = 0;
+    waitingAudio.play().catch(() => {});
+}
+
+function stopWaitingMusic() {
+    waitingAudio.pause();
+    waitingAudio.currentTime = 0;
+}
 
 // --- AUTH & CHARACTER SELECTION ---
 
 function showAuthModal() {
     document.getElementById('start-screen').style.display = 'none';
-    document.getElementById('auth-modal').style.display = 'flex';
+    const authModal = document.getElementById('auth-modal');
+    if (authModal) {
+        authModal.style.display = 'flex';
+        // Autoplay may be blocked; play on first user gesture
+        const onAuthInteract = () => {
+            playWaitingMusic();
+            authModal.removeEventListener('pointerdown', onAuthInteract);
+        };
+        authModal.addEventListener('pointerdown', onAuthInteract, { once: true });
+    }
     document.getElementById('login-form').style.display = 'block';
     document.getElementById('register-form').style.display = 'none';
+    playWaitingMusic();
     // Ensure game-layout is hidden when auth modal is shown
     const gameLayout = document.getElementById('game-layout');
     if (gameLayout) {
@@ -1221,6 +1251,7 @@ async function handleLogin() {
     const data = await apiPost('login_account', { username, password, remember_me: rememberMe });
     if (data.status === 'success') {
         document.getElementById('auth-modal').style.display = 'none';
+        stopWaitingMusic();
         await loadCharacterSelection();
     } else {
         showToast(data.message || 'Login error.', 'error');
@@ -1240,6 +1271,7 @@ async function handleRegister() {
     const data = await apiPost('register_account', { username, password, password2 });
     if (data.status === 'success') {
         document.getElementById('auth-modal').style.display = 'none';
+        stopWaitingMusic();
         await loadCharacterSelection();
     } else {
         showToast(data.message || 'Registration error.', 'error');

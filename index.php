@@ -12,14 +12,24 @@ header('Expires: 0');
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
         /* --- OGÓLNE --- */
+        @font-face {
+            font-family: 'Ruler9';
+            src: url('assets/ui/Ruler 9.ttf') format('truetype');
+            font-weight: normal;
+            font-style: normal;
+            font-display: swap;
+        }
         body { 
             background-color: #121212; 
             color: #e0e0e0; 
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
+            font-family: 'Ruler9', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
             margin: 0; padding: 0; 
             overflow: hidden; 
             height: 100vh; 
             cursor: url('assets/ui/Cursor_01.png') 20 18, auto;
+        }
+        button, input, select, textarea {
+            font-family: 'Ruler9', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
         }
         button, .tile, .class-card, .tab-btn, .item-slot, input, a, .pointer-cursor, .world-item {
             cursor: url('assets/ui/Cursor_02.png') 20 18, pointer !important;
@@ -280,7 +290,35 @@ header('Expires: 0');
             margin: 0 auto;
         }
         
-        #start-screen { display: flex; z-index: 2000; background: #000; }
+        #start-screen { display: flex; z-index: 2000; background: #000; overflow: hidden; }
+        #start-screen h1,
+        #start-screen .combat-btn {
+            position: relative;
+            z-index: 5;
+        }
+        .start-bg-layer {
+            position: absolute;
+            inset: 0;
+            background-repeat: no-repeat;
+            background-size: cover;
+            background-position: center;
+        }
+        .start-bg-layer.layer-4 { background-image: url('img/4.png'); z-index: 4; }
+        .start-bg-layer.layer-3 { background-image: url('img/3.png'); z-index: 3; }
+        .start-bg-layer.layer-2 { background-image: url('img/2.png'); z-index: 2; }
+        .start-bg-layer.layer-1 { 
+            background-image: url('img/1.png');
+            z-index: 1;
+            background-repeat: repeat-x;
+            background-size: auto 100%;
+            animation: startLayer1Drift 18s linear infinite;
+            will-change: transform;
+        }
+        @keyframes startLayer1Drift {
+            0% { transform: translate(0, 0); }
+            50% { transform: translate(-12%, -6px); }
+            100% { transform: translate(-24%, 0); }
+        }
         .class-card { padding: 20px; border: 2px solid #444; border-radius: 10px; cursor: pointer; text-align: center; width: 120px; transition: 0.3s; }
         .class-card:hover { border-color: #f44336; background: #222; transform: translateY(-5px); }
         
@@ -300,8 +338,37 @@ header('Expires: 0');
         /* Przycisk zamknięcia (czerwony X, jak w Windows XP) */
         .modal-panel { position: relative; }
         /* Auth & Character Selection */
-        .auth-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 2001; display: none; flex-direction: column; align-items: center; justify-content: center; }
-        .auth-form { background: #1b1b1b; padding: 30px; border-radius: 8px; width: 300px; color: #fff; }
+        .auth-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: transparent; z-index: 2001; display: none; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
+        .auth-bg-layer {
+            position: absolute;
+            inset: 0;
+            background-repeat: no-repeat;
+            background-size: cover;
+            background-position: center;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+        .auth-bg-layer.layer-4 { background-image: url('img/4.png'); z-index: 4; }
+        .auth-bg-layer.layer-3 { background-image: url('img/3.png'); z-index: 3; }
+        .auth-bg-layer.layer-2 { background-image: url('img/2.png'); z-index: 2; }
+        .auth-bg-layer.layer-1 {
+            background-image: url('img/1.png');
+            z-index: 1;
+            background-repeat: repeat-x;
+            background-size: auto 100%;
+            animation: authLayer1Drift 40s linear infinite, authLayer1Float 6s ease-in-out infinite;
+            will-change: transform, background-position;
+        }
+        @keyframes authLayer1Drift {
+            0% { background-position-x: 0; }
+            100% { background-position-x: -100%; }
+        }
+        @keyframes authLayer1Float {
+            0% { transform: translateY(0); }
+            50% { transform: translateY(-6px); }
+            100% { transform: translateY(0); }
+        }
+        .auth-form { background: rgba(27,27,27,0.9); padding: 30px; border-radius: 8px; width: 300px; color: #fff; position: relative; z-index: 5; }
         .auth-form h2 { margin-top: 0; color: #00e676; }
         .auth-form input { width: 100%; padding: 10px; margin: 10px 0; background: #252525; border: 1px solid #444; color: #fff; border-radius: 4px; box-sizing: border-box; }
         .auth-form button { width: 100%; padding: 12px; background: #00e676; color: #000; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; margin-top: 10px; }
@@ -309,7 +376,7 @@ header('Expires: 0');
         .auth-form .toggle-link { text-align: center; margin-top: 15px; color: #888; font-size: 12px; }
         .auth-form .toggle-link a { color: #00e676; cursor: pointer; text-decoration: underline; }
 
-        .char-selection { background: #1b1b1b; padding: 30px; border-radius: 8px; width: 400px; color: #fff; position: relative; }
+        .char-selection { background: rgba(27,27,27,0.9); padding: 30px; border-radius: 8px; width: 400px; color: #fff; position: relative; z-index: 5; }
         .char-selection h2 { margin-top: 0; color: #00e676; }
         .char-selection-close {
             position: absolute;
@@ -772,6 +839,10 @@ header('Expires: 0');
 <body>
 
 <div id="auth-modal" class="auth-modal">
+    <div class="auth-bg-layer layer-1"></div>
+    <div class="auth-bg-layer layer-2"></div>
+    <div class="auth-bg-layer layer-3"></div>
+    <div class="auth-bg-layer layer-4"></div>
     <div class="auth-form">
         <h2 id="auth-title">Login</h2>
         <div id="login-form">
@@ -856,6 +927,10 @@ header('Expires: 0');
 </div>
 
 <div id="start-screen" class="modal" style="display:flex;">
+    <div class="start-bg-layer layer-1"></div>
+    <div class="start-bg-layer layer-2"></div>
+    <div class="start-bg-layer layer-3"></div>
+    <div class="start-bg-layer layer-4"></div>
     <h1>RPG WORLD</h1>
     <button class="combat-btn" onclick="showAuthModal()">LOGIN</button>
 </div>

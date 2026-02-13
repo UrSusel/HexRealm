@@ -209,7 +209,7 @@ async function showWorldSelection() {
                 el.className = 'world-item';
                 el.style.cursor = 'pointer';
                 el.innerHTML = `<strong>${escapeHtml(w.name)}</strong>
-                                <div style="font-size:12px;color:#ccc">${w.width}x${w.height} • ${w.player_count} graczy</div>`;
+                                <div style="font-size:12px;color:#ccc">${w.width}x${w.height} • ${w.player_count} players</div>`;
                 el.addEventListener('click', () => joinWorld(parseInt(w.id)));
                 list.appendChild(el);
             });
@@ -1250,6 +1250,8 @@ async function handleLogout() {
     stopMultiplayerPolling(); // Clean up polling
     stopMusic();
     await apiPost('logout_account');
+    location.reload();
+    return;
     
     // Reset UI
     document.getElementById('logout-btn').style.display = 'none';
@@ -1290,6 +1292,10 @@ async function loadCharacterSelection() {
     if (gameLayout) {
         gameLayout.style.display = 'none';
     }
+    const closeBtn = document.getElementById('char-selection-close');
+    if (closeBtn) {
+        closeBtn.style.display = (gameState && gameState.id) ? 'inline-flex' : 'none';
+    }
     try {
         const data = await apiPost('get_characters');
         if (data.status !== 'success') {
@@ -1309,7 +1315,7 @@ async function loadCharacterSelection() {
                 slot.innerHTML = `
                     <div class="char-slot-name">${escapeHtml(char.name)}</div>
                     <div class="char-slot-class">Level ${char.level}</div>
-                    <img src="assets/ui/ex.png" style="position:absolute; top:8px; right:8px; width:24px; height:24px; cursor:pointer; z-index:10; filter:drop-shadow(0 0 2px #000);" onclick="event.stopPropagation(); confirmDeleteCharacter(${char.id})">
+                    <img src="assets/ui/ex.png" style="position:absolute; top:50%; right:8px; transform: translateY(-50%); width:24px; height:24px; cursor:pointer; z-index:10; filter:drop-shadow(0 0 2px #000);" onclick="event.stopPropagation(); confirmDeleteCharacter(${char.id})">
                 `;
                 slot.onclick = () => selectCharacter(char.id);
             } else {
@@ -1329,7 +1335,9 @@ async function selectCharacter(charId) {
     const data = await apiPost('select_character', { character_id: charId });
     if (data.status === 'success') {
         document.getElementById('char-selection-modal').style.display = 'none';
-        startGame();
+        playTransitionOverlay(() => {
+            startGame();
+        });
     }
 }
 
@@ -1365,7 +1373,35 @@ function closeCreateCharacter() {
     if (selection) selection.style.display = 'flex';
 }
 
+function closeCharacterSelection() {
+    if (!gameState || !gameState.id) return;
+    playTransitionOverlay(() => {
+        const modal = document.getElementById('char-selection-modal');
+        if (modal) modal.style.display = 'none';
+        const gameLayout = document.getElementById('game-layout');
+        if (gameLayout) gameLayout.style.display = 'flex';
+        if (!gameState.in_combat) startMultiplayerPolling();
+    });
+}
+
+function playTransitionOverlay(done) {
+    const overlay = document.getElementById('transition-overlay');
+    if (!overlay) {
+        if (typeof done === 'function') done();
+        return;
+    }
+    overlay.classList.add('active');
+    setTimeout(() => {
+        if (typeof done === 'function') done();
+    }, 160);
+    setTimeout(() => {
+        overlay.classList.remove('active');
+    }, 360);
+}
+
 window.closeCreateCharacter = closeCreateCharacter;
+window.closeCharacterSelection = closeCharacterSelection;
+window.playTransitionOverlay = playTransitionOverlay;
 
 window.confirmDeleteCharacter = function(charId) {
     let modal = document.getElementById('delete-confirm-modal');
@@ -1449,7 +1485,7 @@ function preloadAssets() {
         ...playerSprites.idle, ...playerSprites.run,
         'assets/ui/Cursor_01.png', 'assets/ui/Cursor_02.png', 'assets/ui/sword.png',
         'assets/ui/BigBar_left.png', 'assets/ui/BigBar_middle.png', 'assets/ui/BigBar_right.png', 'assets/ui/BigBar_Fill.png',
-        'img/grass.png', 'img/grass2.png', 'img/forest.png', 'img/mountain.png', 'img/water.png', 'img/castle.png', 'img/vilage.png'
+        'img/grass.png', 'img/grass2.png', 'img/forest.png', 'img/mountain.png', 'img/hills.png', 'img/hills2.png', 'img/farmlands.png', 'img/water.png', 'img/castle.png', 'img/vilage.png'
     ];
 
     // 2. Dźwięki

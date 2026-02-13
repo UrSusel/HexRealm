@@ -56,6 +56,51 @@ echo "<body style='background:#121212; color:#e0e0e0; font-family:sans-serif; te
 echo "<h2>Creating world: $worldName ($width x $height)...</h2>";
 
 try {
+    function getNeighbors($x, $y, $width, $height) {
+        $offsets = ($y % 2 != 0)
+            ? [[1,0],[1,-1],[0,-1],[-1,0],[0,1],[1,1]]
+            : [[1,0],[0,-1],[-1,-1],[-1,0],[-1,1],[0,1]];
+        $neighbors = [];
+        foreach ($offsets as $o) {
+            $nx = $x + $o[0];
+            $ny = $y + $o[1];
+            if ($nx >= 0 && $ny >= 0 && $nx < $width && $ny < $height) {
+                $neighbors[] = [$nx, $ny];
+            }
+        }
+        return $neighbors;
+    }
+
+    function applyHills(&$tiles, $width, $height) {
+        for ($y = 0; $y < $height; $y++) {
+            for ($x = 0; $x < $width; $x++) {
+                if ($tiles[$y][$x] !== 'mountain') continue;
+                foreach (getNeighbors($x, $y, $width, $height) as $n) {
+                    $nx = $n[0]; $ny = $n[1];
+                    $t = $tiles[$ny][$nx];
+                    if (in_array($t, ['grass', 'grass2', 'forest'], true)) {
+                        $tiles[$ny][$nx] = (rand(0, 1) === 0) ? 'hills' : 'hills2';
+                    }
+                }
+            }
+        }
+    }
+
+    function applyFarmlands(&$tiles, $width, $height) {
+        for ($y = 0; $y < $height; $y++) {
+            for ($x = 0; $x < $width; $x++) {
+                if ($tiles[$y][$x] !== 'city_village') continue;
+                foreach (getNeighbors($x, $y, $width, $height) as $n) {
+                    $nx = $n[0]; $ny = $n[1];
+                    $t = $tiles[$ny][$nx];
+                    if (in_array($t, ['grass', 'grass2', 'forest', 'hills', 'hills2'], true)) {
+                        $tiles[$ny][$nx] = 'farmlands';
+                    }
+                }
+            }
+        }
+    }
+
     // 1. Dodajemy wpis do tabeli worlds (is_tutorial = 0)
     $stmt = $pdo->prepare("INSERT INTO worlds (name, width, height, is_tutorial) VALUES (?, ?, ?, 0)");
     $stmt->execute([$worldName, $width, $height]);
@@ -63,38 +108,49 @@ try {
 
     echo "ID nowego świata: $worldId<br>";
 
-    // 2. Generujemy kafelki dla tego konkretnego ID
-    $stmt = $pdo->prepare("INSERT INTO map_tiles (world_id, x, y, type) VALUES (?, ?, ?, ?)");
-    $count = 0;
-
+    // 2. Generujemy kafelki w pamieci
+    $tiles = [];
     for ($y = 0; $y < $height; $y++) {
+        $row = [];
         for ($x = 0; $x < $width; $x++) {
-            
             $type = (rand(0, 1) == 0) ? 'grass' : 'grass2';
             $rand = rand(1, 100);
 
             if ($rand > 65) $type = 'forest';
             if ($rand > 85) $type = 'mountain';
             if ($rand > 93) $type = 'water';
-            
-            // Punkt startowy (spawn) w nowym świecie
+
+            // Punkt startowy (spawn) w nowym swiecie
             if ($x == 0 && $y == 0) $type = 'city_capital';
-            
-            $stmt->execute([$worldId, $x, $y, $type]);
-            $count++;
+
+            $row[] = $type;
         }
+        $tiles[] = $row;
     }
 
     // 3. Dodawanie wiosek
     $villagesToPlace = rand(3, 6);
     $vCount = 0;
-    $updateStmt = $pdo->prepare("UPDATE map_tiles SET type = 'city_village' WHERE world_id = ? AND x = ? AND y = ?");
-
     while ($vCount < $villagesToPlace) {
         $vx = rand(2, max(2, $width - 1));
         $vy = rand(2, max(2, $height - 1));
-        $updateStmt->execute([$worldId, $vx, $vy]);
+        if ($tiles[$vy][$vx] === 'city_capital') continue;
+        $tiles[$vy][$vx] = 'city_village';
         $vCount++;
+    }
+
+    // 4. Hills obok gor, farmlands wokol wiosek
+    applyHills($tiles, $width, $height);
+    applyFarmlands($tiles, $width, $height);
+
+    // 5. Zapis do bazy
+    $stmt = $pdo->prepare("INSERT INTO map_tiles (world_id, x, y, type) VALUES (?, ?, ?, ?)");
+    $count = 0;
+    for ($y = 0; $y < $height; $y++) {
+        for ($x = 0; $x < $width; $x++) {
+            $stmt->execute([$worldId, $x, $y, $tiles[$y][$x]]);
+            $count++;
+        }
     }
 
     echo "<h1 style='color:green'>SUCCESS! Added world '$worldName'.</h1>";

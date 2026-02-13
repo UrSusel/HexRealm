@@ -610,19 +610,26 @@ if ($action === 'respond_duel_request') {
                 $arenaTiles[] = ['x' => $ax, 'y' => $ay, 'type' => 'grass'];
             }
         }
+
+        $nameStmt = $pdo->prepare("SELECT name FROM characters WHERE id = ?");
+        $nameStmt->execute([$challengerId]);
+        $challengerName = $nameStmt->fetchColumn() ?: 'Challenger';
         
+        $starterId = (rand(0, 1) === 0) ? $challengerId : $charId;
+        $p1Starts = ($starterId == $challengerId);
+        $starterName = $p1Starts ? $challengerName : $char['name'];
         $combatState = [
             'p1_pos' => ['x' => 1, 'y' => 2], // Challenger
             'p2_pos' => ['x' => 5, 'y' => 2], // Target (You)
             'tiles' => $arenaTiles,
-            'p1_ap' => 0,
-            'p2_ap' => 2,
-            'turn_id' => $charId, // Acceptor starts
-            'log' => 'Duel started! Starts: ' . $char['name']
+            'p1_ap' => $p1Starts ? 2 : 0,
+            'p2_ap' => $p1Starts ? 0 : 2,
+            'turn_id' => $starterId,
+            'log' => 'Duel started! Starts: ' . $starterName
         ];
         
         $pdo->prepare("INSERT INTO active_duels (player1_id, player2_id, current_turn_id, combat_state, turn_start_time) VALUES (?, ?, ?, ?, NOW())")
-            ->execute([$challengerId, $charId, $charId, json_encode($combatState)]);
+            ->execute([$challengerId, $charId, $starterId, json_encode($combatState)]);
         $duelId = $pdo->lastInsertId();
         
         // Update both players
@@ -669,6 +676,27 @@ if ($action === 'get_duel_state') {
         $pdo->prepare("UPDATE characters SET duel_id = NULL, in_combat = 0 WHERE id = ?")->execute([$duel['player1_id']]);
         $pdo->prepare("UPDATE characters SET duel_id = NULL, in_combat = 0 WHERE id = ?")->execute([$duel['player2_id']]);
         echo json_encode(['status' => 'ended', 'message' => 'Opponent disconnected!']); exit;
+    }
+
+    // 1b. Fix invalid turn state to avoid softlock
+    $state = json_decode($duel['combat_state'], true);
+    if (!is_array($state)) $state = [];
+    $validTurn = in_array((int)$duel['current_turn_id'], [(int)$duel['player1_id'], (int)$duel['player2_id']], true);
+    $stateChanged = false;
+    if (!$validTurn) {
+        $duel['current_turn_id'] = (int)$duel['player1_id'];
+        $stateChanged = true;
+    }
+    if (!isset($state['p1_ap']) || !isset($state['p2_ap'])) {
+        $p1Turn = ((int)$duel['current_turn_id'] === (int)$duel['player1_id']);
+        $state['p1_ap'] = $p1Turn ? 2 : 0;
+        $state['p2_ap'] = $p1Turn ? 0 : 2;
+        $stateChanged = true;
+    }
+    if ($stateChanged) {
+        $pdo->prepare("UPDATE active_duels SET current_turn_id = ?, combat_state = ?, turn_start_time = NOW() WHERE id = ?")
+            ->execute([$duel['current_turn_id'], json_encode($state), $duel['id']]);
+        $duel['combat_state'] = json_encode($state);
     }
 
     // 2. Check Turn Timer (30s limit)

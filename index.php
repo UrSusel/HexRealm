@@ -1,3 +1,9 @@
+<?php
+$assetVersion = @filemtime(__DIR__ . '/game.js') ?: time();
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: 0');
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -45,6 +51,36 @@
         .tile.forest { background-image: url('img/forest.png'); }
         .tile.mountain { background-image: url('img/mountain.png'); }
         .tile.water { background-image: url('img/water.png'); }
+        .tile.hills { background-image: url('img/hills.png'); }
+        .tile.hills2 { background-image: url('img/hills2.png'); }
+        .tile.farmlands { background-image: url('img/farmlands.png'); }
+        .tile.hills,
+        .tile.hills2,
+        .tile.farmlands {
+            background-size: 80% 80%;
+            background-position: center;
+        }
+        .tile.hills {
+            background-size: 84% 84%;
+            background-position: center calc(50% - 6px);
+        }
+        .tile.hills2 {
+            background-image: none;
+            overflow: visible;
+        }
+        .tile.hills2::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: -45px;
+            width: 128px;
+            height: 160px;
+            background-image: url('img/hills2.png');
+            background-repeat: no-repeat;
+            background-size: 84% 100%;
+            background-position: center top;
+            pointer-events: none;
+        }
         .tile.city_capital { background-image: url('img/castle.png'); }
         .tile.city_village { background-image: url('img/vilage.png'); }
         .tile:hover { filter: brightness(1.3) drop-shadow(0 0 10px white); z-index: 100 !important; }
@@ -120,7 +156,7 @@
         /* Nowy styl paska (3-częściowy) */
         .big-bar-widget {
             position: relative;
-            display: grid; grid-template-columns: 14px 1fr 14px;
+            display: grid; grid-template-columns: 11px 1fr 11px;
             height: 24px; width: 100%;
             image-rendering: pixelated;
         }
@@ -128,7 +164,7 @@
         .hb-left { width: 100%; height: 100%; background: url('assets/ui/BigBar_left.png') no-repeat center; background-size: 100% 100%; z-index: 10; position: relative; pointer-events: none; }
         .hb-middle { 
             width: 100%; height: 100%; position: relative;
-            background: url('assets/ui/BigBar_middle.png') repeat-x center; background-size: auto 100%; z-index: 1; pointer-events: none;
+            background: url('assets/ui/BigBar_middle.png') repeat-x center; background-size: 11px 100%; z-index: 1; pointer-events: none;
         }
         .hb-right { width: 100%; height: 100%; background: url('assets/ui/BigBar_right.png') no-repeat center; background-size: 100% 100%; z-index: 10; position: relative; pointer-events: none; }
         
@@ -273,8 +309,18 @@
         .auth-form .toggle-link { text-align: center; margin-top: 15px; color: #888; font-size: 12px; }
         .auth-form .toggle-link a { color: #00e676; cursor: pointer; text-decoration: underline; }
 
-        .char-selection { background: #1b1b1b; padding: 30px; border-radius: 8px; width: 400px; color: #fff; }
+        .char-selection { background: #1b1b1b; padding: 30px; border-radius: 8px; width: 400px; color: #fff; position: relative; }
         .char-selection h2 { margin-top: 0; color: #00e676; }
+        .char-selection-close {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(0,0,0,0.35);
+            border: 1px solid #555;
+            border-radius: 6px;
+            padding: 6px;
+        }
         .char-slots { display: flex; flex-direction: column; gap: 10px; margin: 20px 0; }
         .char-slot { background: #252525; padding: 15px; border-radius: 5px; border: 1px solid #444; cursor: pointer; transition: 0.2s; }
         .char-slot:hover { border-color: #00e676; background: #2a2a2a; }
@@ -297,6 +343,18 @@
         .toast.error { border-left-color: #f44336; }
         .toast.big { font-size: 16px; padding: 20px 40px; border-left-width: 6px; font-weight: bold; }
         @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* --- TRANSITION OVERLAY --- */
+        #transition-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: #000;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 10005;
+            transition: opacity 0.25s ease;
+        }
+        #transition-overlay.active { opacity: 1; }
 
         /* --- SMALL MODAL (INPUT) --- */
         .small-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 10050; display: none; align-items: center; justify-content: center; }
@@ -411,6 +469,13 @@
             .modal-panel {
                 width: 95% !important;
                 max-height: 85vh;
+            }
+
+            #settings-modal .modal-panel {
+                width: 92vw !important;
+                max-height: 80vh;
+                padding: 20px;
+                overflow: auto;
             }
 
             #char-selection-modal .char-selection {
@@ -750,12 +815,13 @@
 </div>
 
 <div id="toast-container"></div>
+<div id="transition-overlay"></div>
 
 <div id="char-selection-modal" class="modal">
     <div class="char-selection">
         <h2>Select Character</h2>
         <div class="char-slots" id="char-slots-container"></div>
-        <button class="combat-btn" style="width:100%; margin-top:20px;" onclick="document.getElementById('char-selection-modal').style.display='none'">Close</button>
+        <button class="combat-btn" style="width:220px; margin:20px auto 0; display:block;" onclick="closeCharacterSelection()">Close</button>
     </div>
 </div>
 
@@ -988,6 +1054,6 @@
 
 <button id="mobile-panel-toggle" onclick="toggleRightPanel()">▼</button>
 
-<script src="game.js?v=20260211_01"></script>
+<script src="game.js?v=<?php echo $assetVersion; ?>"></script>
 </body>
 </html>

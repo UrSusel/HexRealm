@@ -2,6 +2,50 @@
 require 'db.php';
 
 try {
+    function getNeighbors($x, $y, $width, $height) {
+        $offsets = ($y % 2 != 0)
+            ? [[1,0],[1,-1],[0,-1],[-1,0],[0,1],[1,1]]
+            : [[1,0],[0,-1],[-1,-1],[-1,0],[-1,1],[0,1]];
+        $neighbors = [];
+        foreach ($offsets as $o) {
+            $nx = $x + $o[0];
+            $ny = $y + $o[1];
+            if ($nx >= 0 && $ny >= 0 && $nx < $width && $ny < $height) {
+                $neighbors[] = [$nx, $ny];
+            }
+        }
+        return $neighbors;
+    }
+
+    function applyHills(&$tiles, $width, $height) {
+        for ($y = 0; $y < $height; $y++) {
+            for ($x = 0; $x < $width; $x++) {
+                if ($tiles[$y][$x] !== 'mountain') continue;
+                foreach (getNeighbors($x, $y, $width, $height) as $n) {
+                    $nx = $n[0]; $ny = $n[1];
+                    $t = $tiles[$ny][$nx];
+                    if (in_array($t, ['grass', 'grass2', 'forest'], true)) {
+                        $tiles[$ny][$nx] = (rand(0, 1) === 0) ? 'hills' : 'hills2';
+                    }
+                }
+            }
+        }
+    }
+
+    function applyFarmlands(&$tiles, $width, $height) {
+        for ($y = 0; $y < $height; $y++) {
+            for ($x = 0; $x < $width; $x++) {
+                if ($tiles[$y][$x] !== 'city_village') continue;
+                foreach (getNeighbors($x, $y, $width, $height) as $n) {
+                    $nx = $n[0]; $ny = $n[1];
+                    $t = $tiles[$ny][$nx];
+                    if (in_array($t, ['grass', 'grass2', 'forest', 'hills', 'hills2'], true)) {
+                        $tiles[$ny][$nx] = 'farmlands';
+                    }
+                }
+            }
+        }
+    }
     // Create tables if they don't exist (non-destructive)
     $pdo->exec("SET FOREIGN_KEY_CHECKS = 0");
 
@@ -155,9 +199,9 @@ try {
     $pdo->prepare("INSERT INTO inventory (character_id, item_id, quantity) VALUES (?, 7, 3), (?, 8, 3)")->execute([1,1]);
 
     // GENERATE MAP FOR TUTORIAL (world_id = 1)
-    $stmt = $pdo->prepare("INSERT INTO map_tiles (world_id, x, y, type) VALUES (1, ?, ?, ?)");
-
+    $tiles = [];
     for ($y = 0; $y < 15; $y++) {
+        $row = [];
         for ($x = 0; $x < 15; $x++) {
             $type = 'grass';
             $r = rand(1, 100);
@@ -170,7 +214,18 @@ try {
             if ($x < 3 && $y < 3) $type = 'grass';
             if ($x == 0 && $y == 0) $type = 'city_village';
 
-            $stmt->execute([$x, $y, $type]);
+            $row[] = $type;
+        }
+        $tiles[] = $row;
+    }
+
+    applyHills($tiles, 15, 15);
+    applyFarmlands($tiles, 15, 15);
+
+    $stmt = $pdo->prepare("INSERT INTO map_tiles (world_id, x, y, type) VALUES (1, ?, ?, ?)");
+    for ($y = 0; $y < 15; $y++) {
+        for ($x = 0; $x < 15; $x++) {
+            $stmt->execute([$x, $y, $tiles[$y][$x]]);
         }
     }
 

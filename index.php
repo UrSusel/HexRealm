@@ -110,6 +110,8 @@
         .tabs { display: flex; background: #252525; border-bottom: 1px solid #333; }
         .tab-btn { background: transparent; color: #888; border: none; padding: 20px; cursor: pointer; flex: 1; font-weight: bold; }
         .tab-btn.active { color: #fff; background: #333; border-bottom: 3px solid #f44336; }
+        .class-filter-btn { background: transparent; color: #888; border: 1px solid #555; padding: 8px 15px; cursor: pointer; font-weight: bold; border-radius: 4px; font-size: 12px; opacity: 0.6; transition: opacity 0.2s, color 0.2s; }
+        .class-filter-btn:hover { opacity: 0.8; }
         .tab-content { display: none; padding: 20px; overflow-y: auto; }
         .tab-content.active { display: block; }
         
@@ -835,7 +837,7 @@
 
         <div id="tab-stats" class="tab-content active">
             <h2 id="class-name" style="margin:0;">Character</h2>
-            <div style="font-size:12px; color:#888; margin-bottom:20px;">Level <span id="lvl">1</span></div>
+            <div style="font-size:12px; color:#888; margin-bottom:20px;">Level <span id="lvl">1</span> - <span id="char-class" style="color:#aaa;">Unknown</span></div>
             <div>Health: <span id="hp">100 / 100</span></div>
             <div class="big-bar-widget">
                 <div class="hb-fill-wrapper"><div class="hb-fill" id="hp-fill" style="width:100%"></div></div>
@@ -950,11 +952,17 @@
             <button class="icon-btn" onclick="document.getElementById('shop-modal').style.display='none'"><img src="assets/ui/ex.png" alt="Close"></button>
         </div>
         <div class="shop-tabs" style="display:flex; background:#111;">
-            <button class="tab-btn active" onclick="loadShop('leathersmith', this)">Leathersmith</button>
-            <button class="tab-btn" onclick="loadShop('blacksmith', this)">Blacksmith</button>
-            <button class="tab-btn" onclick="loadShop('armorer', this)">Armorer</button>
-            <button class="tab-btn" onclick="loadShop('clergy', this)">Clergy</button>
-            <button class="tab-btn" onclick="loadSellTab(this)">Sell Loot</button>
+            <button type="button" class="tab-btn active" onclick="loadShop('leathersmith', this, null); return false;">Leathersmith</button>
+            <button type="button" class="tab-btn" onclick="loadShop('blacksmith', this, null); return false;">Blacksmith</button>
+            <button type="button" class="tab-btn" onclick="loadShop('armorer', this, null); return false;">Armorer</button>
+            <button type="button" class="tab-btn" onclick="loadShop('clergy', this, null); return false;">Clergy</button>
+            <button type="button" class="tab-btn" onclick="loadSellTab(this); return false;">Sell Loot</button>
+        </div>
+        <div style="display:flex; gap:8px; padding:10px 15px; background:#0a0a0a; border-bottom:1px solid #333;">
+            <button type="button" class="class-filter-btn" onclick="loadShop(null, null, 1); return false;">Warrior</button>
+            <button type="button" class="class-filter-btn" onclick="loadShop(null, null, 2); return false;">Mage</button>
+            <button type="button" class="class-filter-btn" onclick="loadShop(null, null, 3); return false;">Rogue</button>
+            <button type="button" class="class-filter-btn" onclick="loadShop(null, null, null); return false;" style="margin-left:auto;">All Items</button>
         </div>
         <div id="shop-content" style="flex:1; padding:15px; overflow-y:auto; color:#ccc;">Select a merchant...</div>
         <div style="padding:10px; border-top:1px solid #333; text-align:right; font-weight:bold; color:gold;">Your Gold: <span id="shop-gold">0</span> G</div>

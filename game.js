@@ -3,7 +3,18 @@ let playerMarker = document.createElement('div');
 playerMarker.classList.add('player');
 
 let HEX_WIDTH = 150;   
-let HEX_HEIGHT = 44; 
+let HEX_HEIGHT = 44;
+
+// --- CLASS MAPPING ---
+const CLASS_NAMES = {
+    1: 'Warrior',
+    2: 'Mage',
+    3: 'Rogue'
+}; 
+
+// --- SHOP STATE ---
+window.currentShopType = 'leathersmith'; // Default shop type
+window.currentShopClass = null; // No class filter by default
 
 let gameState = {
     x: 0, y: 0, 
@@ -591,7 +602,13 @@ function showItemMenu(item) {
     // Sell button (only if not equipped)
     if (item.is_equipped != 1) {
         const sellBtn = document.createElement('button');
-        const sellPrice = Math.floor(item.price * 0.4);
+        let sellPrice = item.price; // Default to base price
+        // Check if item has item_value (it's a drop with scaled value = 100%), otherwise apply 60% to normal shop items
+        if (item.item_value !== undefined && item.item_value !== null) {
+            sellPrice = Math.max(1, item.item_value); // 100% for drops
+        } else {
+            sellPrice = Math.max(1, Math.floor(item.price * 0.6)); // 60% for shop items
+        }
         sellBtn.innerText = `💰 Sell (${sellPrice}G)`;
         sellBtn.style.cssText = 'padding:10px; background:#f39c12; color:white; border:none; border-radius:4px; cursor:pointer; font-size:16px;';
         sellBtn.onclick = () => { handleSellFromInventory(item); modal.style.display = 'none'; };
@@ -637,7 +654,12 @@ async function handleUnequipItem(item) {
 }
 
 async function handleSellFromInventory(item) {
-    const sellPrice = Math.floor(item.price * 0.4);
+    let sellPrice = item.price;
+    if (item.item_value !== undefined && item.item_value !== null) {
+        sellPrice = Math.max(1, item.item_value); // 100% for drops
+    } else {
+        sellPrice = Math.max(1, Math.floor(item.price * 0.6)); // 60% for shop items
+    }
     if (!confirm(`Sell ${item.name} for ${sellPrice} gold?`)) return;
     
     const res = await apiPost('sell_item', { item_id: item.item_id });
@@ -839,8 +861,8 @@ function updateCombatEntity(pos, type, container) {
     // Visuals for Turn
     const isTurn = (combatState.turn === type);
     if (type === 'enemy') {
-        // Enemy visuals based on type
-        let hue = "150deg"; // Standard (Blue/Purpleish)
+        
+        let hue = "150deg"; 
         let sat = "100%";
         let bright = "1.0";
         
@@ -853,7 +875,7 @@ function updateCombatEntity(pos, type, container) {
         if (isTurn) filter += " drop-shadow(0 0 5px red)";
         el.style.filter = filter;
     } else {
-        // Player visuals
+        
         if (isTurn) el.style.filter = "brightness(1.2) drop-shadow(0 0 5px gold)";
         else el.style.filter = "";
     }
@@ -1063,6 +1085,8 @@ function updateLocalState(data) {
     gameState.tutorial_completed = (data.tutorial_completed == 1);
     gameState.gold = parseInt(data.gold || 0);
     if(data.stat_points !== undefined) gameState.stat_points = parseInt(data.stat_points);
+    if(data.name) gameState.name = data.name;
+    if(data.class_id) gameState.class_id = parseInt(data.class_id);
     if(data.base_attack !== undefined) gameState.base_attack = parseInt(data.base_attack);
     if(data.base_defense !== undefined) gameState.base_defense = parseInt(data.base_defense);
     if(data.attack !== undefined) gameState.attack = parseInt(data.attack);
@@ -1078,6 +1102,8 @@ function updateUI(data) {
     if(data.steps_buffer !== undefined) document.getElementById('steps-info').innerText = data.steps_buffer + '/10';
     if(data.xp !== undefined) { const maxXp = data.max_xp || gameState.max_xp; document.getElementById('xp-text').innerText = `${data.xp} / ${maxXp}`; document.getElementById('xp-fill').style.width = (data.xp / maxXp * 100) + '%'; }
     if(data.level) document.getElementById('lvl').innerText = data.level;
+    if(data.name || gameState.name) { const charName = data.name || gameState.name; document.getElementById('class-name').innerText = charName; }
+    if(data.class_id || gameState.class_id) { const classId = data.class_id || gameState.class_id; const className = CLASS_NAMES[classId] || 'Unknown'; const classEl = document.getElementById('char-class'); if(classEl) classEl.innerText = className; }
     if(data.gold !== undefined || gameState.gold !== undefined) { const g = data.gold !== undefined ? data.gold : gameState.gold; const gel = document.getElementById('gold-val'); if(gel) gel.innerText = g; }
     updateAttributesUI(data);
 }
@@ -1746,7 +1772,7 @@ function spawnCombatParticles(targetEl, color) {
         p.style.position = 'fixed'; p.style.left = centerX + 'px'; p.style.top = centerY + 'px';
         p.style.width = (Math.random() * 6 + 4) + 'px'; p.style.height = p.style.width;
         p.style.backgroundColor = color; p.style.borderRadius = '50%';
-        p.style.pointerEvents = 'none'; p.style.zIndex = 9999;
+        p.style.pointerEvents = 'none'; p.style.zIndex = 99999;
         document.body.appendChild(p);
 
         const angle = Math.random() * Math.PI * 2;
@@ -1796,7 +1822,7 @@ function showFloatingDamage(targetEl, amount, color) {
     const el = document.createElement('div');
     el.innerText = amount; el.style.position = 'fixed'; el.style.left = centerX + 'px'; el.style.top = topY + 'px';
     el.style.color = color; el.style.fontWeight = '900'; el.style.fontSize = '32px';
-    el.style.textShadow = '2px 2px 0 #000, -1px -1px 0 #000'; el.style.pointerEvents = 'none'; el.style.zIndex = 10000;
+    el.style.textShadow = '2px 2px 0 #000, -1px -1px 0 #000'; el.style.pointerEvents = 'none'; el.style.zIndex = 99999;
     el.style.transform = 'translate(-50%, 0)'; el.style.fontFamily = "'Segoe UI', sans-serif";
     document.body.appendChild(el);
     el.animate([ { transform: 'translate(-50%, -20px) scale(0.5)', opacity: 0 }, { transform: 'translate(-50%, -60px) scale(1.2)', opacity: 1, offset: 0.2 }, { transform: 'translate(-50%, -120px) scale(1)', opacity: 0 } ], { duration: 1200, easing: 'ease-out' }).onfinish = () => el.remove();
@@ -2027,21 +2053,69 @@ window.openCityMenu = function() {
         modal.style.display = 'flex';
         const goldEl = document.getElementById('shop-gold');
         if(goldEl) goldEl.innerText = gameState.gold;
-        loadShop('leathersmith', modal.querySelector('.tab-btn')); // Default load
+        // Reset filter state to "All Items"
+        window.currentShopType = 'leathersmith';
+        window.currentShopClass = null;
+        loadShop('leathersmith', modal.querySelector('.shop-tabs .tab-btn')); // Default load with all items
     }
 }
 
-window.loadShop = async function(type, btn) {
-    document.querySelectorAll('#shop-modal .tab-btn').forEach(b => b.classList.remove('active'));
-    if(btn) btn.classList.add('active');
+window.loadShop = async function(type, btn, classId) {
+    // Ensure shop state variables exist
+    if (typeof window.currentShopType === 'undefined') window.currentShopType = 'leathersmith';
+    if (typeof window.currentShopClass === 'undefined') window.currentShopClass = null;
+    
+    // Store current filter for switching between tabs
+    // If switching merchant tab (type provided), reset class filter to null
+    if (type !== null && type !== undefined) {
+        window.currentShopType = type;
+        window.currentShopClass = null; // Reset class filter when changing merchants
+    }
+    
+    if (classId !== undefined) {
+        window.currentShopClass = classId;
+    }
+    
+    const merchantType = window.currentShopType || 'leathersmith';
+    const selectedClass = window.currentShopClass;
+    
+    // Update merchant tab button active state
+    document.querySelectorAll('#shop-modal .shop-tabs .tab-btn').forEach(b => b.classList.remove('active'));
+    if(btn && btn.classList) {
+        btn.classList.add('active');
+    } else if (window.currentShopType) {
+        // Re-activate the merchant tab by type
+        const btns = Array.from(document.querySelectorAll('#shop-modal .shop-tabs .tab-btn'));
+        const merchantMap = { 'leathersmith': 0, 'blacksmith': 1, 'armorer': 2, 'clergy': 3 };
+        if (merchantMap[window.currentShopType] !== undefined) {
+            btns[merchantMap[window.currentShopType]].classList.add('active');
+        }
+    }
+    
+    // Update class filter button states
+    document.querySelectorAll('.class-filter-btn').forEach(b => b.style.opacity = '0.6');
+    if (selectedClass === null || selectedClass === undefined) {
+        // "All Items" button (index 3)
+        const btns = Array.from(document.querySelectorAll('.class-filter-btn'));
+        if (btns[3]) btns[3].style.opacity = '1';
+    } else {
+        // Class-specific button (Warrior=0, Mage=1, Rogue=2)
+        const btns = Array.from(document.querySelectorAll('.class-filter-btn'));
+        if (btns[selectedClass - 1]) btns[selectedClass - 1].style.opacity = '1';
+    }
     
     const container = document.getElementById('shop-content');
+    if (!container) return; // Safety check
+    
     container.innerHTML = 'Loading...';
     
-    const res = await apiPost('get_shop_data', { shop_type: type });
+    const res = await apiPost('get_shop_data', { shop_type: merchantType, class_id: selectedClass });
     if (res.status === 'success') {
         container.innerHTML = '';
-        if (res.items.length === 0) { container.innerHTML = 'Out of stock.'; return; }
+        if (res.items.length === 0) { 
+            container.innerHTML = 'Out of stock.'; 
+            return; 
+        }
         
         res.items.forEach(item => {
             const row = document.createElement('div');
@@ -2062,7 +2136,7 @@ window.loadShop = async function(type, btn) {
 }
 
 window.loadSellTab = async function(btn) {
-    document.querySelectorAll('#shop-modal .tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('#shop-modal .shop-tabs .tab-btn').forEach(b => b.classList.remove('active'));
     if(btn) btn.classList.add('active');
     
     const container = document.getElementById('shop-content');
@@ -2077,7 +2151,12 @@ window.loadSellTab = async function(btn) {
         if (sellable.length === 0) { container.innerHTML = 'No loot to sell.'; return; }
         
         sellable.forEach(item => {
-            const sellPrice = Math.floor(item.price * 0.5);
+            let sellPrice = item.price;
+            if (item.item_value !== undefined && item.item_value !== null) {
+                sellPrice = Math.max(1, item.item_value); // 100% for drops
+            } else {
+                sellPrice = Math.max(1, Math.floor(item.price * 0.6)); // 60% for shop items
+            }
             const row = document.createElement('div');
             row.style.cssText = "display:flex; justify-content:space-between; align-items:center; padding:10px; background:#252525; margin-bottom:5px; border-radius:4px;";
             row.innerHTML = `

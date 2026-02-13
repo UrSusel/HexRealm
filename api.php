@@ -330,7 +330,7 @@ if ($action === 'get_state') {
         // ignore if column missing
     }
 
-    $invStmt = $pdo->prepare("SELECT i.id as item_id, i.name, i.type, i.power, i.icon, i.description, i.price, i.rarity, inv.quantity, inv.is_equipped FROM inventory inv JOIN items i ON inv.item_id = i.id WHERE inv.character_id = ?");
+    $invStmt = $pdo->prepare("SELECT i.id as item_id, i.name, i.type, i.power, i.icon, i.description, COALESCE(inv.item_value, i.price) as price, i.rarity, inv.quantity, inv.is_equipped FROM inventory inv JOIN items i ON inv.item_id = i.id WHERE inv.character_id = ?");
     $invStmt->execute([$charId]);
     $inventory = $invStmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -878,9 +878,28 @@ if ($action === 'combat_attack') {
         $enemyType = $cState['enemy_type'] ?? 'standard';
         $enemyLevel = $cState['enemy_level'] ?? 1;
         
-        // Gold Formula: 1-10 * (1 + level/10)
-        $baseGold = rand(1, 10);
-        $goldReward = (int)floor($baseGold * (1 + $enemyLevel / 10));
+        // Gold Formula with type-based multipliers and minimum values
+        $goldMultiplier = 1.0;
+        $minGold = 1;
+        $maxGold = 10;
+        
+        if ($enemyType === 'green') {
+            $goldMultiplier = 1.5;
+        } elseif ($enemyType === 'yellow') {
+            $goldMultiplier = 2.0;
+            $minGold = 3;
+        } elseif ($enemyType === 'orange') {
+            $goldMultiplier = 3.0;
+            $minGold = 4;
+            $maxGold = 15;
+        } elseif ($enemyType === 'red') {
+            $goldMultiplier = 4.0;
+            $minGold = 5;
+            $maxGold = 20;
+        }
+        
+        $baseGold = rand($minGold, $maxGold);
+        $goldReward = (int)floor($baseGold * $goldMultiplier * (1 + $enemyLevel / 10));
         
         $dropId = 0;
         $dropChance = 0;
@@ -892,9 +911,14 @@ if ($action === 'combat_attack') {
         elseif ($enemyType === 'red') { $dropId = 24; $dropChance = 30; } // Demon Horn
         
         if ($dropId > 0 && rand(1, 100) <= $dropChance) {
-            $pdo->prepare("INSERT INTO inventory (character_id, item_id, quantity) VALUES (?, ?, 1) ON DUPLICATE KEY UPDATE quantity = quantity + 1")->execute([$charId, $dropId]);
-            $stmt = $pdo->prepare("SELECT name FROM items WHERE id = ?"); $stmt->execute([$dropId]);
-            $dropItem = $stmt->fetchColumn();
+            // Scale item value by enemy level (10% per level)
+            $stmt = $pdo->prepare("SELECT name, price FROM items WHERE id = ?"); 
+            $stmt->execute([$dropId]);
+            $itemData = $stmt->fetch(PDO::FETCH_ASSOC);
+            $scaledValue = (int)floor($itemData['price'] * (1 + $enemyLevel * 0.1));
+            
+            $pdo->prepare("INSERT INTO inventory (character_id, item_id, quantity, item_value) VALUES (?, ?, 1, ?) ON DUPLICATE KEY UPDATE quantity = quantity + 1, item_value = GREATEST(item_value, ?)")->execute([$charId, $dropId, $scaledValue, $scaledValue]);
+            $dropItem = $itemData['name'];
             $log .= " Found loot: $dropItem!";
         }
         
@@ -1135,6 +1159,7 @@ if ($action === 'spend_stat_point') {
 
 if ($action === 'get_shop_data') {
     $shopType = $input['shop_type']; // leathersmith, blacksmith, armorer, clergy
+    $classId = isset($input['class_id']) ? (int)$input['class_id'] : null;
     
     $items = [];
     if ($shopType === 'leathersmith') {
@@ -1153,6 +1178,13 @@ if ($action === 'get_shop_data') {
         // Potions and Bandages
         $stmt = $pdo->query("SELECT * FROM items WHERE id IN (7, 8) ORDER BY price ASC");
         $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+    
+    // Filter by class if class_id is provided
+    if ($classId !== null && $classId > 0) {
+        $items = array_filter($items, function($item) use ($classId) {
+            return $item['optimal_class_id'] === null || $item['optimal_class_id'] == $classId;
+        });
     }
     
     echo json_encode(['status' => 'success', 'items' => $items, 'gold' => $char['gold']]); exit;
@@ -1211,14 +1243,19 @@ if ($action === 'unequip_item') {
 if ($action === 'sell_item') {
     $itemId = (int)$input['item_id']; // Item ID from items table
     // Check if user has it and if it's equipped
-    $stmt = $pdo->prepare("SELECT inventory.id as inv_id, inventory.quantity, inventory.is_equipped, items.price, items.type FROM inventory JOIN items ON inventory.item_id = items.id WHERE character_id = ? AND items.id = ?");
+    $stmt = $pdo->prepare("SELECT inventory.id as inv_id, inventory.quantity, inventory.is_equipped, items.price, items.type, inventory.item_value FROM inventory JOIN items ON inventory.item_id = items.id WHERE character_id = ? AND items.id = ?");
     $stmt->execute([$charId, $itemId]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if (!$row || $row['quantity'] < 1) { echo json_encode(['status' => 'error', 'message' => 'You do not have this item']); exit; }
     if ($row['is_equipped'] == 1) { echo json_encode(['status' => 'error', 'message' => 'Cannot sell equipped items! Unequip first.']); exit; }
     
-    $sellPrice = floor($row['price'] * 0.4); // Sell for 40% value
+    // Use scaled item_value if available (100% for drops), otherwise 60% of base price (for shop items)
+    if ($row['item_value'] !== null) {
+        $sellPrice = max(1, $row['item_value']); // 100% for drops
+    } else {
+        $sellPrice = max(1, floor($row['price'] * 0.6)); // 60% for shop items
+    }
     if ($row['quantity'] > 1) { $pdo->prepare("UPDATE inventory SET quantity = quantity - 1 WHERE id = ?")->execute([$row['inv_id']]); }
     else { $pdo->prepare("DELETE FROM inventory WHERE id = ?")->execute([$row['inv_id']]); }
     

@@ -121,6 +121,7 @@ if (!$char && $action !== 'select_class' && $action !== 'get_characters' && $act
 $STEPS_PER_ENERGY = 10; 
 $MAX_SPEED_NORMAL = 5;
 $MAX_SPEED_EXHAUSTED = 1;
+$COMBAT_DISABLED = false; // Combat enabled
 
 // --- FUNKCJE POMOCNICZE ---
 function offsetToCube($col, $row) {
@@ -139,6 +140,16 @@ function getGameDistance($x1, $y1, $x2, $y2) {
     // Jeśli ruch jest poziomy (to samo Y), podwajamy koszt, bo wizualnie jest to daleko
     if ($y1 == $y2) return $dist * 2;
     return $dist;
+}
+
+function getWorldCapital($pdo, $worldId) {
+    $stmt = $pdo->prepare("SELECT x, y FROM map_tiles WHERE world_id = ? AND type = 'city_capital' LIMIT 1");
+    $stmt->execute([(int)$worldId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($row) {
+        return [(int)$row['x'], (int)$row['y']];
+    }
+    return [0, 0];
 }
 
 // --- NOWE ENDPOINTY ŚWIATA ---
@@ -285,8 +296,12 @@ if ($action === 'join_world') {
     $posStmt = $pdo->prepare("SELECT pos_x, pos_y FROM saved_positions WHERE character_id = ? AND world_id = ? LIMIT 1");
     $posStmt->execute([$charId, $targetWorldId]);
     $saved = $posStmt->fetch(PDO::FETCH_ASSOC);
-    $newX = $saved ? (int)$saved['pos_x'] : 0;
-    $newY = $saved ? (int)$saved['pos_y'] : 0;
+    if ($saved) {
+        $newX = (int)$saved['pos_x'];
+        $newY = (int)$saved['pos_y'];
+    } else {
+        [$newX, $newY] = getWorldCapital($pdo, $targetWorldId);
+    }
 
     
     $pdo->prepare("UPDATE characters SET world_id = ?, pos_x = ?, pos_y = ?, in_combat = 0, combat_state = NULL WHERE id = ?")
@@ -352,7 +367,12 @@ if ($action === 'get_state') {
     $worldName = $wStmt->fetchColumn();
     $char['world_name'] = $worldName;
 
-    if ($char['in_combat'] && empty($char['combat_state'])) {
+    if ($COMBAT_DISABLED && $char['in_combat']) {
+        $pdo->prepare("UPDATE characters SET in_combat = 0, combat_state = NULL, duel_id = NULL WHERE id = ?")->execute([$charId]);
+        $char['in_combat'] = 0;
+        $char['duel_id'] = null;
+        $char['combat_state'] = null;
+    } elseif ($char['in_combat'] && empty($char['combat_state'])) {
         $pdo->prepare("UPDATE characters SET in_combat = 0 WHERE id = ?")->execute([$charId]);
         $char['in_combat'] = 0;
     }
@@ -394,7 +414,15 @@ if ($action === 'move') {
     $targetX = (int)$input['x']; $targetY = (int)$input['y'];
 
     if ($char['hp'] <= 0) { echo json_encode(['status' => 'dead', 'message' => 'You are dead.']); exit; }
-    if ($char['in_combat']) { echo json_encode(['status' => 'error', 'message' => 'You are in combat!']); exit; }
+    if ($char['in_combat']) {
+        if ($COMBAT_DISABLED) {
+            $pdo->prepare("UPDATE characters SET in_combat = 0, combat_state = NULL, duel_id = NULL WHERE id = ?")->execute([$charId]);
+            $char['in_combat'] = 0;
+            $char['duel_id'] = null;
+        } else {
+            echo json_encode(['status' => 'error', 'message' => 'You are in combat!']); exit;
+        }
+    }
 
     $currentSpeed = ($char['energy'] > 0) ? $MAX_SPEED_NORMAL : $MAX_SPEED_EXHAUSTED;
     $dist = getGameDistance($char['pos_x'], $char['pos_y'], $targetX, $targetY);
@@ -429,7 +457,7 @@ if ($action === 'move') {
             $chance = 35; // 35% szansy w tutorialu żeby szybko spotkać wroga
         }
 
-        if (rand(1, 100) <= $chance) { 
+        if (!$COMBAT_DISABLED && rand(1, 100) <= $chance) { 
             $encounter = true;
             
             // Monster Types Logic
@@ -542,13 +570,15 @@ if ($action === 'respawn') {
     $stmt = $pdo->prepare("SELECT max_hp, max_energy, world_id FROM characters WHERE id = ?");
     $stmt->execute([$charId]);
     $stats = $stmt->fetch();
-    $pdo->prepare("UPDATE characters SET hp = ?, energy = ?, steps_buffer = 0, pos_x = 0, pos_y = 0, in_combat = 0, combat_state = NULL WHERE id = ?")
-        ->execute([$stats['max_hp'], $stats['max_energy'], $charId]);
+    $worldId = (int)$stats['world_id'];
+    [$spawnX, $spawnY] = getWorldCapital($pdo, $worldId);
+    $pdo->prepare("UPDATE characters SET hp = ?, energy = ?, steps_buffer = 0, pos_x = ?, pos_y = ?, in_combat = 0, combat_state = NULL WHERE id = ?")
+        ->execute([$stats['max_hp'], $stats['max_energy'], $spawnX, $spawnY, $charId]);
 
     
-    $pdo->prepare("INSERT INTO saved_positions (character_id, world_id, pos_x, pos_y) VALUES (?, ?, 0, 0)
-        ON DUPLICATE KEY UPDATE pos_x = 0, pos_y = 0")
-        ->execute([$charId, (int)$stats['world_id']]);
+    $pdo->prepare("INSERT INTO saved_positions (character_id, world_id, pos_x, pos_y) VALUES (?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE pos_x = VALUES(pos_x), pos_y = VALUES(pos_y)")
+        ->execute([$charId, $worldId, $spawnX, $spawnY]);
 
     echo json_encode(['status' => 'success']); exit;
 }

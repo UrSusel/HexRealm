@@ -205,10 +205,10 @@ try {
         for ($x = 0; $x < 15; $x++) {
             $type = 'grass';
             $r = rand(1, 100);
-            if ($r > 50) $type = 'grass2';
-            if ($r > 75) $type = 'forest';
+            if ($r > 45) $type = 'grass2';
+            if ($r > 72) $type = 'forest';
             if ($r > 90) $type = 'mountain';
-            if ($r > 96) $type = 'water';
+            if ($r > 97) $type = 'water';
 
             // Safe starting zone
             if ($x < 3 && $y < 3) $type = 'grass';

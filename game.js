@@ -61,10 +61,15 @@ let waitingAudio = new Audio('img/Waiting.ogg');
 combatAudio.loop = true;
 waitingAudio.loop = true;
 let isPlaying = false;
-explorationAudio.volume = 0.2;
-combatAudio.volume = 0.2;
-waitingAudio.volume = 0.2;
+explorationAudio.volume = 0.15;
+combatAudio.volume = 0.15;
+waitingAudio.volume = 0.15;
 let sfxVolume = 0.3;
+let currentTrackIndex = -1;
+let loopCurrentTrack = false;
+let allowWorldBypass = false;
+let windActive = false;
+let windTimer = null;
 
 let stepInterval = null;
 const playerSprites = {
@@ -141,9 +146,64 @@ function startGame() {
         }
     }
     
+    startWindEffect();
     initGame();
     updateDayNightCycle();
     setInterval(updateDayNightCycle, 60000);
+}
+
+function startWindEffect() {
+    if (windActive) return;
+    const layer = document.getElementById('wind-layer');
+    if (!layer) return;
+    windActive = true;
+    scheduleWind();
+}
+
+function scheduleWind() {
+    if (!windActive) return;
+    const delay = 450 + Math.random() * 900;
+    windTimer = setTimeout(() => {
+        const burstCount = 1 + Math.floor(Math.random() * 3);
+        for (let i = 0; i < burstCount; i++) {
+            createWindStreak();
+        }
+        scheduleWind();
+    }, delay);
+}
+
+function createWindStreak() {
+    const layer = document.getElementById('wind-layer');
+    if (!layer || document.body.classList.contains('combat-active')) return;
+    const rect = layer.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+
+    const margin = 30;
+    const startX = -margin;
+    const startY = Math.random() * rect.height;
+    const dx = rect.width + margin * 2;
+    const dy = (Math.random() * 24) - 12;
+
+    const streak = document.createElement('div');
+    streak.className = 'wind-streak';
+    const width = 80 + Math.random() * 140;
+    const height = 1 + Math.floor(Math.random() * 3);
+    const duration = (1.8 + Math.random() * 2.2).toFixed(2) + 's';
+    const opacity = (0.2 + Math.random() * 0.25).toFixed(2);
+    const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+    streak.style.left = `${startX}px`;
+    streak.style.top = `${startY}px`;
+    streak.style.width = `${width}px`;
+    streak.style.height = `${height}px`;
+    streak.style.opacity = opacity;
+    streak.style.setProperty('--dx', `${dx}px`);
+    streak.style.setProperty('--dy', `${dy}px`);
+    streak.style.setProperty('--dur', duration);
+    streak.style.setProperty('--rot', `${angle}deg`);
+
+    layer.appendChild(streak);
+    streak.addEventListener('animationend', () => streak.remove(), { once: true });
 }
 
 async function initGame() {
@@ -185,6 +245,10 @@ async function initGame() {
             }
             renderInventory(json.data.inventory);
             checkLifeStatus();
+        } else if (json.code === 'world_missing' || json.allow_world_change) {
+            allowWorldBypass = true;
+            showToast(json.message || 'World missing. Choose another world.', 'error big', 8000);
+            showWorldSelection(true);
         }
     } catch(e) { console.error("Init Error:", e); }
 }
@@ -205,8 +269,9 @@ async function checkTutorialStatus() {
         console.error('checkTutorialStatus error', e);
     }
 }
-async function showWorldSelection() {
+async function showWorldSelection(forceBypass = false) {
     try {
+        allowWorldBypass = Boolean(forceBypass) || allowWorldBypass;
         const data = await apiPost('get_worlds_list');
         const modal = document.getElementById('world-selection');
         const list = document.getElementById('world-list');
@@ -242,10 +307,11 @@ async function joinWorldDebug() {
 
 async function joinWorld(worldId) {
     try {
-        const data = await apiPost('join_world', { world_id: worldId });
+        const data = await apiPost('join_world', { world_id: worldId, bypass_city: allowWorldBypass });
         if (data.status === 'success') {
             const modal = document.getElementById('world-selection');
             if (modal) modal.style.display = 'none';
+            allowWorldBypass = false;
             if (typeof initGame === 'function') await initGame();
             else location.reload();
         } else {
@@ -316,7 +382,13 @@ async function loadAndDrawMap() {
         body: JSON.stringify({ action: 'get_map' })
     });
     const result = await res.json();
-    if (result.tiles) renderMapTiles(result.tiles);
+    if (result.tiles) {
+        renderMapTiles(result.tiles);
+    } else if (result.code === 'world_missing' || result.allow_world_change) {
+        allowWorldBypass = true;
+        showToast(result.message || 'World missing. Choose another world.', 'error big', 8000);
+        showWorldSelection(true);
+    }
 }
 
 function renderMapTiles(tiles) {
@@ -342,6 +414,8 @@ function renderMapTiles(tiles) {
                 s.className = 'smoke-particle';
                 s.style.left = '60px'; s.style.top = '40px'; 
                 s.style.animationDelay = (i * 0.8) + 's';
+                s.style.animationDuration = (2.8 + Math.random() * 1.2).toFixed(2) + 's';
+                s.style.setProperty('--smoke-drift', `${6 + Math.random() * 18}px`);
                 tile.appendChild(s);
             }
         }
@@ -352,6 +426,8 @@ function renderMapTiles(tiles) {
                 s.className = 'smoke-particle';
                 s.style.left = '75px'; s.style.top = '50px'; 
                 s.style.animationDelay = (i * 0.8) + 's';
+                s.style.animationDuration = (2.8 + Math.random() * 1.2).toFixed(2) + 's';
+                s.style.setProperty('--smoke-drift', `${6 + Math.random() * 18}px`);
                 tile.appendChild(s);
             }
         }
@@ -405,7 +481,7 @@ function updatePlayerVisuals(x, y, isInstant = false) {
             if (moveTimeout) clearTimeout(moveTimeout);
             moveTimeout = setTimeout(() => { setAnimationState('idle'); }, duration * 1000);
         }
-        playerMarker.style.zIndex = 1000; 
+        playerMarker.style.zIndex = 1300; 
         centerMapOnPlayer(tLeft, tTop);
     }
 }
@@ -1169,12 +1245,23 @@ window.switchTab = function(name) {
 function toggleSettings() {
     const modal = document.getElementById('settings-modal');
     const displayModal = modal.style.display;
-    modal.style.display = displayModal === 'flex' ? 'none' : 'flex';
+    const isOpening = displayModal !== 'flex';
+    modal.style.display = isOpening ? 'flex' : 'none';
+    if (isOpening) syncMusicSettingsUI();
 }
 
 function playMusic() {
     if (isPlaying) return;
-    if (inCombatMode) { combatAudio.play(); } else { if (!explorationAudio.src) playRandomTrack(); else explorationAudio.play(); }
+    if (inCombatMode) {
+        combatAudio.play();
+    } else {
+        if (!explorationAudio.src) {
+            if (currentTrackIndex >= 0) setMusicTrack(currentTrackIndex);
+            else playRandomTrack();
+        } else {
+            explorationAudio.play();
+        }
+    }
     isPlaying = true;
 }
 
@@ -1183,10 +1270,76 @@ function stopMusic() {
     isPlaying = false;
 }
 
-function setVolume(val) { explorationAudio.volume = val; combatAudio.volume = val; waitingAudio.volume = val; }
+function setVolume(val) {
+    const volume = Math.max(0, Math.min(1, parseFloat(val)));
+    explorationAudio.volume = volume;
+    combatAudio.volume = volume;
+    waitingAudio.volume = volume;
+
+    const label = document.getElementById('music-volume-value');
+    if (label) label.innerText = `${Math.round(volume * 100)}%`;
+    const slider = document.getElementById('music-volume');
+    if (slider && slider.value !== String(volume)) slider.value = volume;
+}
 function setSfxVolume(val) { sfxVolume = val; }
-function playRandomTrack() { let next = Math.floor(Math.random() * playlist.length); explorationAudio.src = playlist[next]; explorationAudio.play().catch(e => console.log("Autoplay blocked:", e)); }
-explorationAudio.addEventListener('ended', playRandomTrack);
+function getTrackLabel(src) {
+    if (!src) return '-';
+    const file = src.split('/').pop() || src;
+    return file.replace(/\.[^/.]+$/, '');
+}
+function updateNowPlaying() {
+    const label = document.getElementById('music-now-playing');
+    if (label) label.innerText = currentTrackIndex >= 0 ? getTrackLabel(playlist[currentTrackIndex]) : '-';
+}
+function populateMusicList() {
+    const select = document.getElementById('music-track-select');
+    if (!select) return;
+    select.innerHTML = '';
+    playlist.forEach((src, idx) => {
+        const option = document.createElement('option');
+        option.value = String(idx);
+        option.textContent = getTrackLabel(src);
+        select.appendChild(option);
+    });
+}
+function syncMusicSettingsUI() {
+    const toggle = document.getElementById('music-loop-toggle');
+    if (toggle) toggle.checked = loopCurrentTrack;
+    const select = document.getElementById('music-track-select');
+    if (select && currentTrackIndex >= 0) select.value = String(currentTrackIndex);
+    updateNowPlaying();
+    setVolume(explorationAudio.volume);
+}
+function setMusicLoop(enabled) {
+    loopCurrentTrack = Boolean(enabled);
+    explorationAudio.loop = loopCurrentTrack;
+    const toggle = document.getElementById('music-loop-toggle');
+    if (toggle) toggle.checked = loopCurrentTrack;
+}
+function setMusicTrack(value) {
+    const idx = parseInt(value, 10);
+    if (Number.isNaN(idx) || idx < 0 || idx >= playlist.length) return;
+    currentTrackIndex = idx;
+    explorationAudio.src = playlist[currentTrackIndex];
+    explorationAudio.loop = loopCurrentTrack;
+    updateNowPlaying();
+    if (!inCombatMode) explorationAudio.play().catch(e => console.log("Autoplay blocked:", e));
+}
+function playRandomTrack() {
+    if (!playlist.length) return;
+    let next = Math.floor(Math.random() * playlist.length);
+    if (playlist.length > 1 && next === currentTrackIndex) next = (next + 1) % playlist.length;
+    currentTrackIndex = next;
+    explorationAudio.src = playlist[currentTrackIndex];
+    explorationAudio.loop = loopCurrentTrack;
+    updateNowPlaying();
+    explorationAudio.play().catch(e => console.log("Autoplay blocked:", e));
+    syncMusicSettingsUI();
+}
+function handleTrackEnded() {
+    if (!loopCurrentTrack) playRandomTrack();
+}
+explorationAudio.addEventListener('ended', handleTrackEnded);
 
 function playWaitingMusic() {
     waitingAudio.currentTime = 0;
@@ -1494,6 +1647,9 @@ window.toggleSettings = toggleSettings;
 window.joinWorldDebug = joinWorldDebug;
 window.playMusic = playMusic;
 window.stopMusic = stopMusic;
+window.setVolume = setVolume;
+window.setMusicLoop = setMusicLoop;
+window.setMusicTrack = setMusicTrack;
 window.changeCharacter = changeCharacter;
 window.loadCharacterSelection = loadCharacterSelection;
 window.setSfxVolume = setSfxVolume;
@@ -1566,6 +1722,8 @@ function preloadAssets() {
 // On initial page load, check for remembered login
 document.addEventListener('DOMContentLoaded', () => {
     checkRememberedLogin();
+    populateMusicList();
+    syncMusicSettingsUI();
     // Ensure game-layout is hidden by default on page load
     const gameLayout = document.getElementById('game-layout');
     if (gameLayout) {

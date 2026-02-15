@@ -44,10 +44,32 @@ header('Expires: 0');
             background-image: url('img/Starry background  - Layer 02 - Stars.png'), url('img/Starry background  - Layer 01 - Void.png');
             background-repeat: repeat-x; background-size: auto 100%; 
             animation: spaceScroll 60s linear infinite;
+            z-index: 0;
         }
         @keyframes spaceScroll { from { background-position: 0 0, 0 0; } to { background-position: -2000px 0, -500px 0; } }
         
         #map { position: absolute; width: 4000px; height: 4000px; background: transparent; top: 0; left: 0; transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1); transform-origin: 0 0; }
+        #wind-layer {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            overflow: hidden;
+            z-index: 1100;
+        }
+        .wind-streak {
+            position: absolute;
+            background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.55), rgba(255,255,255,0));
+            opacity: 0.35;
+            filter: blur(0.3px);
+            animation: windMove var(--dur, 2.6s) linear forwards;
+            transform: translate(0, 0) rotate(var(--rot, 0deg));
+        }
+        @keyframes windMove {
+            from { transform: translate(0, 0) rotate(var(--rot, 0deg)); opacity: 0.0; }
+            10% { opacity: 0.35; }
+            90% { opacity: 0.25; }
+            to { transform: translate(var(--dx, 200px), var(--dy, 0px)) rotate(var(--rot, 0deg)); opacity: 0.0; }
+        }
 
         /* --- KAFELKI --- */
         .tile { 
@@ -59,7 +81,10 @@ header('Expires: 0');
         .tile.grass { background-image: url('img/grass.png'); }
         .tile.grass2 { background-image: url('img/grass2.png'); }
         .tile.forest { background-image: url('img/forest.png'); }
-        .tile.mountain { background-image: url('img/mountain.png'); }
+        .tile.mountain {
+            background-image: none;
+            overflow: visible;
+        }
         .tile.water { background-image: url('img/water.png'); }
         .tile.hills { background-image: url('img/hills.png'); }
         .tile.hills2 { background-image: url('img/hills2.png'); }
@@ -91,9 +116,26 @@ header('Expires: 0');
             background-position: center top;
             pointer-events: none;
         }
+        .tile.mountain::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: -8px;
+            width: 128px;
+            height: 140px;
+            background-image: url('img/mountain.png');
+            background-repeat: no-repeat;
+            background-size: 100% 100%;
+            background-position: center top;
+            pointer-events: none;
+        }
         .tile.city_capital { background-image: url('img/castle.png'); }
         .tile.city_village { background-image: url('img/vilage.png'); }
-        .tile:hover { filter: brightness(1.3) drop-shadow(0 0 10px white); z-index: 100 !important; }
+        .tile:hover { filter: brightness(1.3) drop-shadow(0 0 10px white); z-index: 1200 !important; }
+        body.combat-active .tile:hover { z-index: 1200 !important; }
+        body.combat-active .player,
+        body.combat-active .player.enemy,
+        body.combat-active .player.enemy:hover { z-index: 1400 !important; }
 
         /* --- NOCNE OŚWIETLENIE --- */
         .night-mode .tile.city_capital, 
@@ -106,26 +148,27 @@ header('Expires: 0');
 
         /* --- SMOKE EFFECT --- */
         .smoke-particle {
-            position: absolute; width: 8px; height: 8px;
-            background: rgba(255, 255, 255, 0.6); border-radius: 50%;
+            position: absolute; width: 12px; height: 12px;
+            background: rgba(255, 255, 255, 0.75); border-radius: 50%;
             pointer-events: none;
-            animation: smokeAnim 2.5s infinite linear;
+            animation: smokeAnim 3.2s infinite linear;
         }
         @keyframes smokeAnim {
-            0% { transform: translate(0, 0) scale(1); opacity: 0.5; }
-            100% { transform: translate(10px, -25px) scale(3); opacity: 0; }
+            0% { transform: translate(0, 0) scale(0.9); opacity: 0.6; }
+            100% { transform: translate(var(--smoke-drift, 12px), -55px) scale(3.2); opacity: 0; }
         }
 
         /* --- GRACZ/WRÓG --- */
         .player { 
             width: 128px; height: 128px; 
             background-repeat: no-repeat; background-position: center bottom; background-size: contain;
-            image-rendering: pixelated; position: absolute; z-index: 1000; 
+            image-rendering: pixelated; position: absolute; z-index: 1300; 
             pointer-events: none; 
             filter: drop-shadow(0px 5px 5px rgba(0,0,0,0.5));
         }
         .player.enemy {
             pointer-events: auto !important; cursor: url('assets/ui/Cursor_02.png') 15 15, crosshair !important;
+            z-index: 1300 !important;
         }
         .player.other-player {
             pointer-events: auto !important; cursor: url('assets/ui/Cursor_02.png') 15 15, pointer !important;
@@ -136,6 +179,7 @@ header('Expires: 0');
         .player.enemy:hover {
             transform: scaleX(-1) scale(1.1); cursor: url('assets/ui/sword.png') 0 0, crosshair !important;
             filter: drop-shadow(0 0 10px red) hue-rotate(150deg) brightness(0.8);
+            z-index: 1300 !important;
         }
 
         /* --- UI PANEL --- */
@@ -567,6 +611,12 @@ header('Expires: 0');
             }
         }
 
+        @media (min-width: 901px) {
+            #game-layout.panel-collapsed #expand-panel-btn {
+                display: block !important;
+            }
+        }
+
         /* --- MOBILE PORTRAIT (Pionowo - Panel na dole) --- */
         @media (max-width: 1366px) and (orientation: portrait) {
             #right-panel {
@@ -913,12 +963,26 @@ header('Expires: 0');
                 <button class="icon-btn" onclick="playMusic()"><img src="assets/ui/play.png" alt="Play"></button>
                 <button class="icon-btn" onclick="stopMusic()"><img src="assets/ui/ex.png" alt="Stop"></button>
             </div>
-            <input type="range" min="0" max="1" step="0.1" value="0.2" oninput="setVolume(this.value)" style="width:100%; margin-top:10px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:10px;">
+                <span style="color:#888; font-size:12px;">Volume</span>
+                <span id="music-volume-value" style="color:#bbb; font-size:12px;">15%</span>
+            </div>
+            <input id="music-volume" type="range" min="0" max="1" step="0.01" value="0.15" oninput="setVolume(this.value)" style="width:100%;">
+
+            <label style="display:flex; align-items:center; gap:8px; margin-top:10px; color:#bbb; font-size:12px; justify-content:center;">
+                <input type="checkbox" id="music-loop-toggle" onchange="setMusicLoop(this.checked)">
+                Loop current track
+            </label>
+
+            <div style="margin-top:10px; text-align:left;">
+                <div style="color:#888; font-size:12px; margin-bottom:6px;">Now playing: <span id="music-now-playing" style="color:#e0e0e0;">-</span></div>
+                <select id="music-track-select" onchange="setMusicTrack(this.value)" style="width:100%; padding:6px; background:#1b1b1b; border:1px solid #444; color:#e0e0e0; border-radius:4px; font-family: inherit;"></select>
+            </div>
             
             <div style="display:flex; align-items:center; justify-content:center; gap:10px; margin-top:15px; margin-bottom:5px;">
                 <span style="color:#ccc;">Sounds</span>
             </div>
-            <input type="range" min="0" max="1" step="0.1" value="0.3" oninput="setSfxVolume(this.value)" style="width:100%;">
+            <input type="range" min="0" max="1" step="0.05" value="0.3" oninput="setSfxVolume(this.value)" style="width:100%;">
         </div>
 
         <button class="combat-btn" style="width:100%; background:#2196f3; margin:5px 0;" onclick="changeCharacter()">Change Character</button>
@@ -938,6 +1002,7 @@ header('Expires: 0');
 <div id="game-layout">
     <div id="left-panel">
         <div id="day-night-overlay" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:1500; transition: background-color 5s;"></div>
+        <div id="wind-layer"></div>
         
         <div class="top-left-ui">
             <div class="world-text">

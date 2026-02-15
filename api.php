@@ -121,6 +121,8 @@ if (!$char && $action !== 'select_class' && $action !== 'get_characters' && $act
 $STEPS_PER_ENERGY = 10; 
 $MAX_SPEED_NORMAL = 5;
 $MAX_SPEED_EXHAUSTED = 1;
+$COMBAT_DISABLED = false; // Combat enabled
+$STAMINA_DISABLED = false; // Stamina drain enabled
 
 // --- FUNKCJE POMOCNICZE ---
 function offsetToCube($col, $row) {
@@ -139,6 +141,74 @@ function getGameDistance($x1, $y1, $x2, $y2) {
     // Jeśli ruch jest poziomy (to samo Y), podwajamy koszt, bo wizualnie jest to daleko
     if ($y1 == $y2) return $dist * 2;
     return $dist;
+}
+
+function getWorldCapital($pdo, $worldId) {
+    $stmt = $pdo->prepare("SELECT x, y FROM map_tiles WHERE world_id = ? AND type = 'city_capital' LIMIT 1");
+    $stmt->execute([(int)$worldId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($row) {
+        return [(int)$row['x'], (int)$row['y']];
+    }
+    return [0, 0];
+}
+
+function worldExists($pdo, $worldId) {
+    if ($worldId <= 0) return false;
+    $stmt = $pdo->prepare("SELECT 1 FROM worlds WHERE id = ? LIMIT 1");
+    $stmt->execute([(int)$worldId]);
+    return (bool)$stmt->fetchColumn();
+}
+
+function worldHasTiles($pdo, $worldId) {
+    if ($worldId <= 0) return false;
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM map_tiles WHERE world_id = ?");
+    $stmt->execute([(int)$worldId]);
+    return ((int)$stmt->fetchColumn()) > 0;
+}
+
+function ensureTutorialWorld($pdo) {
+    $tutorialId = 1;
+
+    $worldExists = worldExists($pdo, $tutorialId);
+    if (!$worldExists) {
+        $stmt = $pdo->prepare("INSERT INTO worlds (id, name, width, height, is_tutorial) VALUES (1, ?, 15, 15, 1)");
+        $stmt->execute(['Tutorial World']);
+    }
+
+    if (worldHasTiles($pdo, $tutorialId)) {
+        return $tutorialId;
+    }
+
+    $tiles = [];
+    for ($y = 0; $y < 15; $y++) {
+        $row = [];
+        for ($x = 0; $x < 15; $x++) {
+            $type = 'grass';
+            $r = rand(1, 100);
+            if ($r > 45) $type = 'grass2';
+            if ($r > 72) $type = 'forest';
+            if ($r > 90) $type = 'mountain';
+            if ($r > 97) $type = 'water';
+
+            if ($x < 3 && $y < 3) $type = 'grass';
+            if ($x == 0 && $y == 0) $type = 'city_village';
+
+            $row[] = $type;
+        }
+        $tiles[] = $row;
+    }
+
+    $tiles[7][7] = 'city_capital';
+
+    $stmt = $pdo->prepare("INSERT INTO map_tiles (world_id, x, y, type) VALUES (1, ?, ?, ?)");
+    for ($y = 0; $y < 15; $y++) {
+        for ($x = 0; $x < 15; $x++) {
+            $stmt->execute([$x, $y, $tiles[$y][$x]]);
+        }
+    }
+
+    return $tutorialId;
 }
 
 // --- NOWE ENDPOINTY ŚWIATA ---
@@ -178,9 +248,12 @@ if ($action === 'create_character') {
         echo json_encode(['status' => 'error', 'message' => 'Maximum 3 characters.']); exit;
     }
     
-    // Pick a valid world (prefer tutorial). Avoid FK failure if world_id=1 is missing.
+    // Pick a valid world (prefer tutorial). Auto-create tutorial if needed.
     $worldStmt = $pdo->query("SELECT id FROM worlds ORDER BY is_tutorial DESC, id ASC LIMIT 1");
     $worldId = (int)$worldStmt->fetchColumn();
+    if ($worldId <= 0) {
+        $worldId = ensureTutorialWorld($pdo);
+    }
     if ($worldId <= 0) {
         echo json_encode(['status' => 'error', 'message' => 'No worlds found. Run setup_game.php or import worlds.']); exit;
     }
@@ -250,6 +323,7 @@ if ($action === 'get_worlds_list') {
 
 if ($action === 'join_world') {
     $targetWorldId = (int)$input['world_id'];
+    $bypassCityCheck = !empty($input['bypass_city']);
     
     $stmt = $pdo->prepare("SELECT id FROM worlds WHERE id = ?");
     $stmt->execute([$targetWorldId]);
@@ -270,7 +344,8 @@ if ($action === 'join_world') {
         ->execute([$charId, $curWorldId, (int)$char['pos_x'], (int)$char['pos_y']]);
 
    
-    if ($curWorldId != 1) {
+    $currentWorldValid = worldExists($pdo, $curWorldId) && worldHasTiles($pdo, $curWorldId);
+    if ($curWorldId != 1 && !($bypassCityCheck && !$currentWorldValid)) {
         $posX = (int)($char['pos_x'] ?? 0);
         $posY = (int)($char['pos_y'] ?? 0);
         $tileStmt = $pdo->prepare("SELECT type FROM map_tiles WHERE x = ? AND y = ? AND world_id = ? LIMIT 1");
@@ -285,8 +360,12 @@ if ($action === 'join_world') {
     $posStmt = $pdo->prepare("SELECT pos_x, pos_y FROM saved_positions WHERE character_id = ? AND world_id = ? LIMIT 1");
     $posStmt->execute([$charId, $targetWorldId]);
     $saved = $posStmt->fetch(PDO::FETCH_ASSOC);
-    $newX = $saved ? (int)$saved['pos_x'] : 0;
-    $newY = $saved ? (int)$saved['pos_y'] : 0;
+    if ($saved) {
+        $newX = (int)$saved['pos_x'];
+        $newY = (int)$saved['pos_y'];
+    } else {
+        [$newX, $newY] = getWorldCapital($pdo, $targetWorldId);
+    }
 
     
     $pdo->prepare("UPDATE characters SET world_id = ?, pos_x = ?, pos_y = ?, in_combat = 0, combat_state = NULL WHERE id = ?")
@@ -346,13 +425,42 @@ if ($action === 'get_state') {
     $char['inventory'] = $inventory;
     $char['speed'] = ($char['energy'] > 0) ? $MAX_SPEED_NORMAL : $MAX_SPEED_EXHAUSTED;
     
-    // Pobierz nazwę świata
-    $wStmt = $pdo->prepare("SELECT name FROM worlds WHERE id = ?");
-    $wStmt->execute([$char['world_id']]);
-    $worldName = $wStmt->fetchColumn();
+    // Pobierz nazwę świata (z fallbackiem na tutorial)
+    $worldName = null;
+    if (worldExists($pdo, (int)$char['world_id'])) {
+        $wStmt = $pdo->prepare("SELECT name FROM worlds WHERE id = ?");
+        $wStmt->execute([$char['world_id']]);
+        $worldName = $wStmt->fetchColumn();
+    }
+    if (!$worldName || !worldHasTiles($pdo, (int)$char['world_id'])) {
+        $fallbackWorldId = ensureTutorialWorld($pdo);
+        if ($fallbackWorldId > 0) {
+            [$spawnX, $spawnY] = getWorldCapital($pdo, $fallbackWorldId);
+            $pdo->prepare("UPDATE characters SET world_id = ?, pos_x = ?, pos_y = ?, in_combat = 0, combat_state = NULL WHERE id = ?")
+                ->execute([$fallbackWorldId, $spawnX, $spawnY, $charId]);
+            $char['world_id'] = $fallbackWorldId;
+            $char['pos_x'] = $spawnX;
+            $char['pos_y'] = $spawnY;
+            $wStmt = $pdo->prepare("SELECT name FROM worlds WHERE id = ?");
+            $wStmt->execute([$fallbackWorldId]);
+            $worldName = $wStmt->fetchColumn();
+        } else {
+            echo json_encode([
+                'status' => 'error',
+                'code' => 'world_missing',
+                'message' => 'World not found or empty. Choose another world.',
+                'allow_world_change' => true
+            ]); exit;
+        }
+    }
     $char['world_name'] = $worldName;
 
-    if ($char['in_combat'] && empty($char['combat_state'])) {
+    if ($COMBAT_DISABLED && $char['in_combat']) {
+        $pdo->prepare("UPDATE characters SET in_combat = 0, combat_state = NULL, duel_id = NULL WHERE id = ?")->execute([$charId]);
+        $char['in_combat'] = 0;
+        $char['duel_id'] = null;
+        $char['combat_state'] = null;
+    } elseif ($char['in_combat'] && empty($char['combat_state'])) {
         $pdo->prepare("UPDATE characters SET in_combat = 0 WHERE id = ?")->execute([$charId]);
         $char['in_combat'] = 0;
     }
@@ -387,16 +495,33 @@ if ($action === 'get_map') {
 
     $stmt = $pdo->prepare("SELECT * FROM map_tiles WHERE world_id = ? AND x BETWEEN ? AND ? AND y BETWEEN ? AND ?");
     $stmt->execute([$char['world_id'], $minX, $maxX, $minY, $maxY]);
-    echo json_encode(['status' => 'success', 'tiles' => $stmt->fetchAll(PDO::FETCH_ASSOC)]); exit;
+    $tiles = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    if (!$tiles) {
+        echo json_encode([
+            'status' => 'error',
+            'code' => 'world_missing',
+            'message' => 'World map missing. Choose another world.',
+            'allow_world_change' => true
+        ]); exit;
+    }
+    echo json_encode(['status' => 'success', 'tiles' => $tiles]); exit;
 }
 
 if ($action === 'move') {
     $targetX = (int)$input['x']; $targetY = (int)$input['y'];
 
     if ($char['hp'] <= 0) { echo json_encode(['status' => 'dead', 'message' => 'You are dead.']); exit; }
-    if ($char['in_combat']) { echo json_encode(['status' => 'error', 'message' => 'You are in combat!']); exit; }
+    if ($char['in_combat']) {
+        if ($COMBAT_DISABLED) {
+            $pdo->prepare("UPDATE characters SET in_combat = 0, combat_state = NULL, duel_id = NULL WHERE id = ?")->execute([$charId]);
+            $char['in_combat'] = 0;
+            $char['duel_id'] = null;
+        } else {
+            echo json_encode(['status' => 'error', 'message' => 'You are in combat!']); exit;
+        }
+    }
 
-    $currentSpeed = ($char['energy'] > 0) ? $MAX_SPEED_NORMAL : $MAX_SPEED_EXHAUSTED;
+    $currentSpeed = $STAMINA_DISABLED ? $MAX_SPEED_NORMAL : (($char['energy'] > 0) ? $MAX_SPEED_NORMAL : $MAX_SPEED_EXHAUSTED);
     $dist = getGameDistance($char['pos_x'], $char['pos_y'], $targetX, $targetY);
     
     if ($dist > $currentSpeed) { echo json_encode(['status' => 'error', 'message' => 'Too far!']); exit; }
@@ -418,9 +543,11 @@ if ($action === 'move') {
         $char['hp'] = max($char['hp'], floor($char['max_hp'] * 0.5)); $char['energy'] = $char['max_energy']; $char['steps_buffer'] = 0;
         $msg = "Resting in the city.";
     } else {
-        $char['steps_buffer'] += $dist;
-        while ($char['steps_buffer'] >= $STEPS_PER_ENERGY) {
-            if ($char['energy'] > 0) { $char['energy']--; $char['steps_buffer'] -= $STEPS_PER_ENERGY; } else break;
+        if (!$STAMINA_DISABLED) {
+            $char['steps_buffer'] += $dist;
+            while ($char['steps_buffer'] >= $STEPS_PER_ENERGY) {
+                if ($char['energy'] > 0) { $char['energy']--; $char['steps_buffer'] -= $STEPS_PER_ENERGY; } else break;
+            }
         }
 
         
@@ -429,7 +556,7 @@ if ($action === 'move') {
             $chance = 35; // 35% szansy w tutorialu żeby szybko spotkać wroga
         }
 
-        if (rand(1, 100) <= $chance) { 
+        if (!$COMBAT_DISABLED && rand(1, 100) <= $chance) { 
             $encounter = true;
             
             // Monster Types Logic
@@ -542,13 +669,15 @@ if ($action === 'respawn') {
     $stmt = $pdo->prepare("SELECT max_hp, max_energy, world_id FROM characters WHERE id = ?");
     $stmt->execute([$charId]);
     $stats = $stmt->fetch();
-    $pdo->prepare("UPDATE characters SET hp = ?, energy = ?, steps_buffer = 0, pos_x = 0, pos_y = 0, in_combat = 0, combat_state = NULL WHERE id = ?")
-        ->execute([$stats['max_hp'], $stats['max_energy'], $charId]);
+    $worldId = (int)$stats['world_id'];
+    [$spawnX, $spawnY] = getWorldCapital($pdo, $worldId);
+    $pdo->prepare("UPDATE characters SET hp = ?, energy = ?, steps_buffer = 0, pos_x = ?, pos_y = ?, in_combat = 0, combat_state = NULL WHERE id = ?")
+        ->execute([$stats['max_hp'], $stats['max_energy'], $spawnX, $spawnY, $charId]);
 
     
-    $pdo->prepare("INSERT INTO saved_positions (character_id, world_id, pos_x, pos_y) VALUES (?, ?, 0, 0)
-        ON DUPLICATE KEY UPDATE pos_x = 0, pos_y = 0")
-        ->execute([$charId, (int)$stats['world_id']]);
+    $pdo->prepare("INSERT INTO saved_positions (character_id, world_id, pos_x, pos_y) VALUES (?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE pos_x = VALUES(pos_x), pos_y = VALUES(pos_y)")
+        ->execute([$charId, $worldId, $spawnX, $spawnY]);
 
     echo json_encode(['status' => 'success']); exit;
 }

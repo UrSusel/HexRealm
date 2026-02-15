@@ -8,7 +8,7 @@ header('Expires: 0');
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>RPG World</title>
+    <title>HexRealm</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
         /* --- OGÓLNE --- */
@@ -198,7 +198,7 @@ header('Expires: 0');
             display: block;
         }
         .tabs { display: flex; background: #252525; border-bottom: 1px solid #333; }
-        .tab-btn { background: transparent; color: #888; border: none; padding: 20px; cursor: pointer; flex: 1; font-weight: bold; }
+        .tab-btn { background: transparent; color: #888; border: none; padding: 15px 8px; cursor: pointer; flex: 1; font-weight: bold; font-size: 13px; }
         .tab-btn.active { color: #fff; background: #333; border-bottom: 3px solid #f44336; }
         .class-filter-btn { background: transparent; color: #888; border: 1px solid #555; padding: 8px 15px; cursor: pointer; font-weight: bold; border-radius: 4px; font-size: 12px; opacity: 0.6; transition: opacity 0.2s, color 0.2s; }
         .class-filter-btn:hover { opacity: 0.8; }
@@ -442,7 +442,7 @@ header('Expires: 0');
         /* --- TOAST NOTIFICATIONS --- */
         #toast-container {
             position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-            display: flex; flex-direction: column; gap: 10px; z-index: 10000;
+            display: flex; flex-direction: column; gap: 10px; z-index: 10100;
             pointer-events: none;
         }
         .toast {
@@ -468,7 +468,7 @@ header('Expires: 0');
         #transition-overlay.active { opacity: 1; }
 
         /* --- SMALL MODAL (INPUT) --- */
-        .small-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 10050; display: none; align-items: center; justify-content: center; }
+        .small-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 10150; display: none; align-items: center; justify-content: center; }
         .small-modal-content { background: #1e1e1e; padding: 25px; border-radius: 8px; border: 1px solid #333; width: 300px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
         .small-modal input { width: 100%; padding: 10px; margin: 15px 0; background: #252525; border: 1px solid #444; color: white; border-radius: 4px; box-sizing: border-box; }
 
@@ -926,7 +926,7 @@ header('Expires: 0');
     </div>
 </div>
 
-<div id="mobile-disclaimer-modal" class="small-modal" style="z-index:10002;">
+<div id="mobile-disclaimer-modal" class="small-modal">
     <div class="small-modal-content" style="width:320px;">
         <h3 style="margin-top:0; color:#ffd700;">📱 Best Experience</h3>
         <p style="margin:15px 0; font-size:14px; color:#e0e0e0;">For best experience, please switch to <strong>Portrait Mode</strong> 📲</p>
@@ -990,6 +990,19 @@ header('Expires: 0');
     </div>
 </div>
 
+<div id="guilds-modal" class="modal">
+    <div class="modal-panel" style="background:#1e1e1e; width:500px; max-height:600px; border:1px solid #444; border-radius:8px; display:flex; flex-direction:column;">
+        <div style="padding:15px; border-bottom:1px solid #333; display:flex; justify-content:space-between; align-items:center;">
+            <h2 style="margin:0; color:#e0e0e0;">Guilds</h2>
+            <button class="icon-btn" onclick="document.getElementById('guilds-modal').style.display='none'"><img src="assets/ui/ex.png" alt="Close"></button>
+        </div>
+        <div style="padding:10px 15px; background:#0a0a0a; border-bottom:1px solid #333;">
+            <div style="font-size:13px; color:#888;">Your Reputation: <span id="guild-reputation-val" style="color:#ffd700;">0</span></div>
+        </div>
+        <div id="guilds-content" style="flex:1; padding:15px; overflow-y:auto; color:#ccc;">Loading...</div>
+    </div>
+</div>
+
 <div id="start-screen" class="modal" style="display:flex;">
     <div class="start-bg-layer layer-1"></div>
     <div class="start-bg-layer layer-2"></div>
@@ -1039,6 +1052,7 @@ header('Expires: 0');
             <button class="tab-btn active" onclick="switchTab('stats')">Character</button>
             <button class="tab-btn" onclick="switchTab('inventory')">Inventory</button>
             <button class="tab-btn" onclick="switchTab('attributes')">Attributes</button>
+            <button class="tab-btn" onclick="switchTab('quests')">Quests</button>
         </div>
 
         <div id="tab-stats" class="tab-content active">
@@ -1066,7 +1080,7 @@ header('Expires: 0');
                 <div class="hb-middle"></div>
                 <div class="hb-right"></div>
             </div>
-            <div style="margin-top:15px;">Gold: <span id="gold-val" style="color:gold; font-weight:bold;">0</span> G</div>
+            <div style="margin-top:15px;">Coins: <span id="gold-val" style="color:gold; font-weight:bold;">0 copper coins</span></div>
         </div>
 
         <div id="tab-inventory" class="tab-content">
@@ -1081,6 +1095,17 @@ header('Expires: 0');
             </div>
             <div id="attributes-list" style="display:flex; flex-direction:column; gap:10px;">
                 <!-- JS will populate this -->
+            </div>
+        </div>
+
+        <div id="tab-quests" class="tab-content">
+            <h3>Active Quests</h3>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <div style="font-size:13px; color:#888;">Reputation: <span id="reputation-val" style="color:#ffd700;">0</span></div>
+                <button class="combat-btn" style="padding:5px 10px; font-size:11px;" onclick="openGuildsModal()">Guilds</button>
+            </div>
+            <div id="active-quests-list" style="display:flex; flex-direction:column; gap:10px; max-height:400px; overflow-y:auto;">
+                <div style="text-align:center; color:#666; padding:20px; font-size:13px;">No active quests</div>
             </div>
         </div>
     </div>
@@ -1163,6 +1188,7 @@ header('Expires: 0');
             <button type="button" class="tab-btn" onclick="loadShop('armorer', this, null); return false;">Armorer</button>
             <button type="button" class="tab-btn" onclick="loadShop('clergy', this, null); return false;">Clergy</button>
             <button type="button" class="tab-btn" onclick="loadSellTab(this); return false;">Sell Loot</button>
+            <button type="button" class="tab-btn" onclick="loadQuestsTab(this); return false;">Quests</button>
         </div>
         <div style="display:flex; gap:8px; padding:10px 15px; background:#0a0a0a; border-bottom:1px solid #333;">
             <button type="button" class="class-filter-btn" onclick="loadShop(null, null, 1); return false;">Warrior</button>
@@ -1171,7 +1197,7 @@ header('Expires: 0');
             <button type="button" class="class-filter-btn" onclick="loadShop(null, null, null); return false;" style="margin-left:auto;">All Items</button>
         </div>
         <div id="shop-content" style="flex:1; padding:15px; overflow-y:auto; color:#ccc;">Select a merchant...</div>
-        <div style="padding:10px; border-top:1px solid #333; text-align:right; font-weight:bold; color:gold;">Your Gold: <span id="shop-gold">0</span> G</div>
+        <div style="padding:10px; border-top:1px solid #333; text-align:right; font-weight:bold; color:gold;">Your Coins: <span id="shop-gold">0 copper coins</span></div>
     </div>
 </div>
 

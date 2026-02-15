@@ -118,7 +118,7 @@ function startGame() {
             const goldDiv = document.createElement('div');
             goldDiv.id = 'gold-display';
             goldDiv.style.cssText = "font-size:18px; color:gold; margin:10px 0; font-weight:bold; text-shadow:1px 1px 0 #000;";
-            goldDiv.innerText = "0 G";
+            goldDiv.innerHTML = formatCoins(0, true);
             const xpContainer = document.getElementById('xp-container');
             if (xpContainer) xpContainer.parentNode.insertBefore(goldDiv, xpContainer.nextSibling);
             else statsPanel.prepend(goldDiv);
@@ -162,11 +162,14 @@ function startWindEffect() {
 
 function scheduleWind() {
     if (!windActive) return;
-    const delay = 450 + Math.random() * 900;
+    // Wind appears more frequently and at random intervals
+    const delay = 150 + Math.random() * 500;
     windTimer = setTimeout(() => {
-        const burstCount = 1 + Math.floor(Math.random() * 3);
+        // More wind streaks per burst (2-7 instead of 1-3)
+        const burstCount = 2 + Math.floor(Math.random() * 6);
         for (let i = 0; i < burstCount; i++) {
-            createWindStreak();
+            // Stagger the creation slightly
+            setTimeout(() => createWindStreak(), i * 30);
         }
         scheduleWind();
     }, delay);
@@ -179,17 +182,23 @@ function createWindStreak() {
     if (rect.width <= 0 || rect.height <= 0) return;
 
     const margin = 30;
-    const startX = -margin;
+    // Wind can start from different positions (left or middle of screen)
+    const startFromLeft = Math.random() > 0.3; // 70% from left, 30% from middle
+    const startX = startFromLeft ? -margin : (rect.width * 0.3 + Math.random() * (rect.width * 0.3));
     const startY = Math.random() * rect.height;
-    const dx = rect.width + margin * 2;
-    const dy = (Math.random() * 24) - 12;
+    
+    // Wind travels variable distance - not always to the end
+    const minDx = rect.width * 0.4; // Minimum 40% across screen
+    const maxDx = rect.width + margin * 3; // Maximum past the edge
+    const dx = minDx + Math.random() * (maxDx - minDx);
+    const dy = (Math.random() * 28) - 14; // Slightly more vertical variation
 
     const streak = document.createElement('div');
     streak.className = 'wind-streak';
-    const width = 80 + Math.random() * 140;
-    const height = 1 + Math.floor(Math.random() * 3);
-    const duration = (1.8 + Math.random() * 2.2).toFixed(2) + 's';
-    const opacity = (0.2 + Math.random() * 0.25).toFixed(2);
+    const width = 60 + Math.random() * 180; // Slightly wider streaks
+    const height = 1 + Math.floor(Math.random() * 4); // More thickness variety
+    const duration = (1.2 + Math.random() * 2.8).toFixed(2) + 's'; // Variable speed
+    const opacity = (0.15 + Math.random() * 0.35).toFixed(2); // More opacity variety
     const angle = Math.atan2(dy, dx) * (180 / Math.PI);
 
     streak.style.left = `${startX}px`;
@@ -326,6 +335,29 @@ async function joinWorld(worldId) {
 function escapeHtml(str) {
     if (!str) return '';
     return String(str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[s]));
+}
+
+const COIN_COPPER_PER_SILVER = 100;
+const COIN_SILVER_PER_GOLD = 100;
+const COIN_COLORS = {
+    gold: '#ffd700',
+    silver: '#c0c0c0',
+    copper: '#b87333'
+};
+
+function formatCoins(totalCopper, useHtml = false) {
+    const value = Math.max(0, parseInt(totalCopper || 0, 10) || 0);
+    const copper = value % COIN_COPPER_PER_SILVER;
+    const totalSilver = Math.floor(value / COIN_COPPER_PER_SILVER);
+    const silver = totalSilver % COIN_SILVER_PER_GOLD;
+    const gold = Math.floor(totalSilver / COIN_SILVER_PER_GOLD);
+
+    const parts = [];
+    const wrap = (label, color) => useHtml ? `<span style="color:${color};">${label}</span>` : label;
+    if (gold > 0) parts.push(wrap(`${gold} gold coin${gold === 1 ? '' : 's'}`, COIN_COLORS.gold));
+    if (silver > 0) parts.push(wrap(`${silver} silver coin${silver === 1 ? '' : 's'}`, COIN_COLORS.silver));
+    if (copper > 0 || parts.length === 0) parts.push(wrap(`${copper} copper coin${copper === 1 ? '' : 's'}`, COIN_COLORS.copper));
+    return parts.join(' ');
 }
 async function apiPost(action, body = {}) {
     try {
@@ -695,7 +727,7 @@ function showItemMenu(item) {
         } else {
             sellPrice = Math.max(1, Math.floor(item.price * 0.6)); // 60% for shop items
         }
-        sellBtn.innerText = `💰 Sell (${sellPrice}G)`;
+        sellBtn.innerHTML = `💰 Sell (${formatCoins(sellPrice, true)})`;
         sellBtn.style.cssText = 'padding:10px; background:#f39c12; color:white; border:none; border-radius:4px; cursor:pointer; font-size:16px;';
         sellBtn.onclick = () => { handleSellFromInventory(item); modal.style.display = 'none'; };
         buttons.appendChild(sellBtn);
@@ -746,7 +778,7 @@ async function handleSellFromInventory(item) {
     } else {
         sellPrice = Math.max(1, Math.floor(item.price * 0.6)); // 60% for shop items
     }
-    if (!confirm(`Sell ${item.name} for ${sellPrice} gold?`)) return;
+    if (!confirm(`Sell ${item.name} for ${formatCoins(sellPrice)}?`)) return;
     
     const res = await apiPost('sell_item', { item_id: item.item_id });
     if (res.status === 'success') {
@@ -1179,6 +1211,7 @@ function updateLocalState(data) {
     if(data.defense !== undefined) gameState.defense = parseInt(data.defense);
     if(data.name) gameState.name = data.name;
     if(data.id) gameState.id = parseInt(data.id);
+    if(data.inventory) gameState.inventory = data.inventory;
 }
 
 function updateUI(data) {
@@ -1190,7 +1223,13 @@ function updateUI(data) {
     if(data.level) document.getElementById('lvl').innerText = data.level;
     if(data.name || gameState.name) { const charName = data.name || gameState.name; document.getElementById('class-name').innerText = charName; }
     if(data.class_id || gameState.class_id) { const classId = data.class_id || gameState.class_id; const className = CLASS_NAMES[classId] || 'Unknown'; const classEl = document.getElementById('char-class'); if(classEl) classEl.innerText = className; }
-    if(data.gold !== undefined || gameState.gold !== undefined) { const g = data.gold !== undefined ? data.gold : gameState.gold; const gel = document.getElementById('gold-val'); if(gel) gel.innerText = g; }
+    if(data.gold !== undefined || gameState.gold !== undefined) {
+        const g = data.gold !== undefined ? data.gold : gameState.gold;
+        const gel = document.getElementById('gold-val');
+        if (gel) gel.innerHTML = formatCoins(g, true);
+        const mapGoldEl = document.getElementById('gold-display');
+        if (mapGoldEl) mapGoldEl.innerHTML = formatCoins(g, true);
+    }
     updateAttributesUI(data);
 }
 
@@ -1232,6 +1271,8 @@ window.spendPoint = async function(stat) {
     if(res.status === 'success') {
         updateLocalState(res.data);
         updateUI(res.data);
+        // Refresh full state to sync attack/defense calculations
+        await refreshState();
     }
 }
 
@@ -1593,7 +1634,7 @@ window.confirmDeleteCharacter = function(charId) {
     if (!modal) {
         modal = document.createElement('div');
         modal.id = 'delete-confirm-modal';
-        modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); display:flex; justify-content:center; align-items:center; z-index:9999;';
+        modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); display:flex; justify-content:center; align-items:center; z-index:10200;';
         modal.innerHTML = `
             <div style="background:#222; padding:25px; border:2px solid #555; border-radius:10px; text-align:center; color:white; box-shadow:0 0 20px #000;">
                 <h2 style="margin-top:0; margin-bottom:20px;">Are you sure?</h2>
@@ -2278,7 +2319,7 @@ window.openCityMenu = function() {
     if (modal) {
         modal.style.display = 'flex';
         const goldEl = document.getElementById('shop-gold');
-        if(goldEl) goldEl.innerText = gameState.gold;
+        if(goldEl) goldEl.innerHTML = formatCoins(gameState.gold, true);
         // Reset filter state to "All Items"
         window.currentShopType = 'leathersmith';
         window.currentShopClass = null;
@@ -2354,7 +2395,7 @@ window.loadShop = async function(type, btn, classId) {
                         <div style="font-size:11px; color:#888;">${item.description || 'No description'}</div>
                     </div>
                 </div>
-                <button onclick="buyItem(${item.id}, ${item.price})" style="background:#4caf50; border:none; color:white; padding:5px 10px; cursor:pointer; border-radius:3px;">Buy (${item.price} G)</button>
+                <button onclick="buyItem(${item.id}, ${item.price})" style="background:#4caf50; border:none; color:white; padding:5px 10px; cursor:pointer; border-radius:3px;">Buy (${formatCoins(item.price, true)})</button>
             `;
             container.appendChild(row);
         });
@@ -2393,7 +2434,7 @@ window.loadSellTab = async function(btn) {
                         <div style="font-size:11px; color:#aaa;">${item.rarity}</div>
                     </div>
                 </div>
-                <button onclick="sellItem(${item.item_id})" style="background:#ff9800; border:none; color:black; padding:5px 10px; cursor:pointer; border-radius:3px;">Sell (${sellPrice} G)</button>
+                <button onclick="sellItem(${item.item_id})" style="background:#ff9800; border:none; color:black; padding:5px 10px; cursor:pointer; border-radius:3px;">Sell (${formatCoins(sellPrice, true)})</button>
             `;
             container.appendChild(row);
         });
@@ -2401,11 +2442,11 @@ window.loadSellTab = async function(btn) {
 }
 
 window.buyItem = async function(id, price) {
-    if (gameState.gold < price) { showToast("Not enough gold!", "error"); return; }
+    if (gameState.gold < price) { showToast("Not enough coins!", "error"); return; }
     const res = await apiPost('buy_item', { item_id: id });
     if (res.status === 'success') {
         gameState.gold = res.gold;
-        const gel = document.getElementById('shop-gold'); if(gel) gel.innerText = gameState.gold;
+        const gel = document.getElementById('shop-gold'); if(gel) gel.innerHTML = formatCoins(gameState.gold, true);
         updateUI({ gold: gameState.gold });
         showToast(res.message, "success");
         
@@ -2420,7 +2461,7 @@ window.sellItem = async function(id) {
     const res = await apiPost('sell_item', { item_id: id });
     if (res.status === 'success') {
         gameState.gold = res.gold;
-        const gel = document.getElementById('shop-gold'); if(gel) gel.innerText = gameState.gold;
+        const gel = document.getElementById('shop-gold'); if(gel) gel.innerHTML = formatCoins(gameState.gold, true);
         updateUI({ gold: gameState.gold });
         showToast(res.message, "success");
         loadSellTab(document.querySelector('#shop-modal .tab-btn:last-child')); // Refresh list
@@ -2480,7 +2521,7 @@ window.showCombatResult = function(xp, gold, loot, tutorialFinished) {
     modal.dataset.tutorialFinished = tutorialFinished ? "true" : "false";
 
     let html = `<div style="font-size:20px; margin-bottom:10px; font-weight:bold;">+${xp} XP</div>`;
-    html += `<div style="font-size:20px; color:gold; margin-bottom:10px; font-weight:bold;">+${gold} Gold</div>`;
+    html += `<div style="font-size:20px; color:gold; margin-bottom:10px; font-weight:bold;">+${formatCoins(gold, true)}</div>`;
     
     if (loot) {
         html += `<div style="margin-top:20px; padding:15px; background:#333; border-radius:5px; border:1px solid #555;">
@@ -2500,8 +2541,9 @@ window.closeCombatResult = async function() {
     modal.style.display = 'none';
     toggleCombatMode(false);
     
-    // Refresh game state (XP, Level, Inventory)
-    await initGame();
+    // Refresh game state (XP, Level, Inventory, Quests) - use refreshState for faster updates
+    await refreshState();
+    await loadActiveQuests();
 
     if (tutorialFinished) {
         showWorldSelection();
@@ -2609,3 +2651,251 @@ function updateCombatCamera() {
 
     container.style.transform = `translate(${combatCameraState.x}px, ${combatCameraState.y}px) scale(${combatCameraState.scale})`;
 }
+
+// --- QUEST SYSTEM ---
+
+// Item name mapping for quest display
+const questItemNames = {
+    20: 'Rat Tail',
+    21: 'Goblin Ear',
+    22: 'Bandit Insignia',
+    23: 'Lava Core',
+    24: 'Demon Horn'
+};
+
+function formatCurrency(amount) {
+    if (amount >= 10000) {
+        const gold = Math.floor(amount / 10000);
+        const remainder = amount % 10000;
+        const silver = Math.floor(remainder / 100);
+        if (silver > 0) {
+            return `${gold} gold, ${silver} silver`;
+        }
+        return `${gold} gold`;
+    } else if (amount >= 100) {
+        const silver = Math.floor(amount / 100);
+        const copper = amount % 100;
+        if (copper > 0) {
+            return `${silver} silver, ${copper} copper`;
+        }
+        return `${silver} silver`;
+    }
+    return `${amount} copper coins`;
+}
+
+async function loadQuestsTab(btn) {
+    if (btn) {
+        document.querySelectorAll('.shop-tabs .tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    }
+    
+    const container = document.getElementById('shop-content');
+    const res = await apiPost('get_available_quests', {});
+    
+    console.log('loadQuestsTab response:', res); // DEBUG
+    
+    if (res.status === 'error') {
+        container.innerHTML = '<div style="text-align:center; color:#f44336; padding:20px;">Error: ' + (res.message || 'Unknown error') + '</div>';
+        return;
+    }
+    
+    if (res.status === 'success') {
+        container.innerHTML = '<h3 style="margin-top:0; color:#ffd700;">Available Quests</h3>';
+        
+        console.log('Number of quests:', res.quests.length); // DEBUG
+        
+        if (res.quests.length === 0) {
+            container.innerHTML += '<div style="text-align:center; color:#666; padding:20px;">No quests available.</div>';
+            return;
+        }
+        
+        res.quests.forEach(quest => {
+            const reqItems = quest.required_items.map(item => {
+                const itemName = questItemNames[item.id] || `Item #${item.id}`;
+                return `<span style="color:#aaa;">${item.quantity}x ${itemName}</span>`;
+            }).join(', ');
+            
+            const isGuildQuest = (quest.guild_required == 1 || quest.guild_required === true);
+            const guildBadge = isGuildQuest
+                ? '<span style="background:#9c27b0; color:white; padding:3px 8px; border-radius:3px; font-size:10px; margin-left:8px;">⚔️ GUILD</span>' 
+                : '';
+            
+            const div = document.createElement('div');
+            const borderColor = isGuildQuest ? '#9c27b0' : '#ffd700';
+            div.style.cssText = `background:#252525; padding:15px; margin-bottom:10px; border-radius:5px; border-left:3px solid ${borderColor};`;
+            div.innerHTML = `
+                <div style="font-weight:bold; color:#ffd700; font-size:15px; margin-bottom:5px; display:flex; align-items:center;">
+                    ${quest.title}${guildBadge}
+                </div>
+                <div style="color:#ccc; font-size:13px; margin-bottom:8px;">${quest.description}</div>
+                <div style="color:#888; font-size:12px; margin-bottom:5px;">Required: ${reqItems}</div>
+                <div style="color:#888; font-size:12px; margin-bottom:10px;">
+                    Reward: <span style="color:#4caf50;">${formatCurrency(quest.reward_gold)}</span>, 
+                    <span style="color:#2196f3;">+${quest.reward_reputation} reputation</span>
+                </div>
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <button onclick="acceptQuest(${quest.id})" class="combat-btn" style="padding:8px 15px; font-size:12px; background:#4caf50;">Accept Quest</button>
+                    <span style="color:#666; font-size:11px;">Min Level: ${quest.min_level}</span>
+                </div>
+            `;
+            container.appendChild(div);
+        });
+    }
+}
+
+async function acceptQuest(questId) {
+    const res = await apiPost('accept_quest', { quest_id: questId });
+    if (res.status === 'success') {
+        showToast(res.message || 'Quest accepted!', 'success');
+        await loadQuestsTab();
+        await loadActiveQuests();
+    } else {
+        showToast(res.message || 'Failed to accept quest', 'error');
+    }
+}
+
+async function loadActiveQuests() {
+    const res = await apiPost('get_active_quests');
+    
+    if (res.status === 'success') {
+        const container = document.getElementById('active-quests-list');
+        const repVal = document.getElementById('reputation-val');
+        
+        // Update reputation display
+        const repRes = await apiPost('get_reputation');
+        if (repRes.status === 'success') {
+            repVal.textContent = repRes.reputation || 0;
+        }
+        
+        if (res.quests.length === 0) {
+            container.innerHTML = '<div style="text-align:center; color:#666; padding:20px; font-size:13px;">No active quests</div>';
+            return;
+        }
+        
+        container.innerHTML = '';
+        res.quests.forEach(quest => {
+            const progressHtml = quest.required_items.map(item => {
+                const has = quest.progress[item.id] || 0;
+                const needed = item.quantity;
+                const color = has >= needed ? '#4caf50' : '#f44336';
+                const itemName = questItemNames[item.id] || `Item #${item.id}`;
+                return `<div style="color:${color}; font-size:12px;">${has}/${needed} x ${itemName}</div>`;
+            }).join('');
+            
+            const div = document.createElement('div');
+            div.style.cssText = "background:#252525; padding:12px; border-radius:5px; border-left:3px solid " + (quest.can_complete ? '#4caf50' : '#666');
+            div.innerHTML = `
+                <div style="font-weight:bold; color:#ffd700; font-size:14px; margin-bottom:5px;">${quest.title}</div>
+                <div style="color:#aaa; font-size:12px; margin-bottom:8px;">${quest.description}</div>
+                <div style="margin-bottom:8px;">${progressHtml}</div>
+                <div style="display:flex; gap:5px;">
+                    ${quest.can_complete ? 
+                        `<button onclick="completeQuest(${quest.char_quest_id})" class="combat-btn" style="padding:5px 10px; font-size:11px; background:#4caf50;">Complete</button>` : 
+                        `<span style="color:#666; font-size:11px;">Collect required items</span>`
+                    }
+                    <button onclick="abandonQuest(${quest.char_quest_id})" class="combat-btn" style="padding:5px 10px; font-size:11px; background:#d32f2f;">Abandon</button>
+                </div>
+            `;
+            container.appendChild(div);
+        });
+    }
+}
+
+async function completeQuest(charQuestId) {
+    const res = await apiPost('complete_quest', { char_quest_id: charQuestId });
+    if (res.status === 'success') {
+        showToast(res.message, 'success');
+        // Update reputation immediately from response
+        const repVal = document.getElementById('reputation-val');
+        if (repVal && res.reputation !== undefined) {
+            repVal.textContent = res.reputation;
+        }
+        await refreshState();      // Refresh inventory
+        await loadActiveQuests();   // Refresh quests
+        playSfx('pickup');
+    } else {
+        showToast(res.message, 'error');
+    }
+}
+
+async function refreshState() {
+    const res = await apiPost('get_state');
+    if (res.status === 'success') {
+        updateLocalState(res.data);
+        updateUI(res.data);
+        renderInventory(res.data.inventory);
+    }
+}
+
+async function abandonQuest(charQuestId) {
+    if (!confirm('Are you sure you want to abandon this quest?')) return;
+    
+    const res = await apiPost('abandon_quest', { char_quest_id: charQuestId });
+    if (res.status === 'success') {
+        showToast(res.message, 'success');
+        await loadActiveQuests();
+    } else {
+        showToast(res.message, 'error');
+    }
+}
+
+async function openGuildsModal() {
+    document.getElementById('guilds-modal').style.display = 'flex';
+    await loadGuilds();
+}
+
+async function loadGuilds() {
+    const res = await apiPost('get_guilds');
+    
+    if (res.status === 'success') {
+        const container = document.getElementById('guilds-content');
+        const repVal = document.getElementById('guild-reputation-val');
+        
+        repVal.textContent = res.reputation;
+        
+        if (res.guilds.length === 0) {
+            container.innerHTML = '<div style="text-align:center; color:#666; padding:20px;">No guilds available.</div>';
+            return;
+        }
+        
+        container.innerHTML = '';
+        res.guilds.forEach(guild => {
+            const div = document.createElement('div');
+            div.style.cssText = "background:#252525; padding:15px; margin-bottom:10px; border-radius:5px; border-left:3px solid " + 
+                (guild.is_member ? '#4caf50' : guild.can_join ? '#ffd700' : '#666');
+            
+            div.innerHTML = `
+                <div style="font-weight:bold; color:#ffd700; font-size:16px; margin-bottom:5px;">${guild.name}</div>
+                <div style="color:#ccc; font-size:13px; margin-bottom:10px;">${guild.description}</div>
+                <div style="color:#888; font-size:12px; margin-bottom:10px;">Required Reputation: ${guild.required_reputation}</div>
+                ${guild.is_member ? 
+                    '<div style="color:#4caf50; font-weight:bold;">✓ Member</div>' : 
+                    guild.can_join ? 
+                        `<button onclick="joinGuild(${guild.id})" class="combat-btn" style="padding:8px 15px; font-size:12px; background:#4caf50;">Join Guild</button>` :
+                        `<div style="color:#666; font-size:12px;">Insufficient reputation (${res.reputation}/${guild.required_reputation})</div>`
+                }
+            `;
+            container.appendChild(div);
+        });
+    }
+}
+
+async function joinGuild(guildId) {
+    const res = await apiPost('join_guild', { guild_id: guildId });
+    if (res.status === 'success') {
+        showToast(res.message, 'success');
+        await loadGuilds();
+        playSfx('levelup');
+    } else {
+        showToast(res.message, 'error');
+    }
+}
+
+// Wrap original switchTab to load quests when switching to quest tab
+const _originalSwitchTab = switchTab;
+switchTab = function(tabName) {
+    if (tabName === 'quests') {
+        loadActiveQuests();
+    }
+    _originalSwitchTab(tabName);
+};

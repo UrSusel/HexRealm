@@ -560,11 +560,25 @@ if ($action === 'move') {
             $encounter = true;
             
             // Monster Types Logic
-            $weightedTypes = ['standard' => 20];
-            if ($char['level'] >= 2) $weightedTypes['green'] = 30;
-            if ($char['level'] >= 3) $weightedTypes['yellow'] = 60;
-            if ($char['level'] >= 5) $weightedTypes['orange'] = 70;
-            if ($char['level'] >= 7) $weightedTypes['red'] = 60;
+            // Prioritize rats (standard) at low levels 1-4 (70% chance)
+            if ($char['level'] <= 4) {
+                $weightedTypes = ['standard' => 70];
+                if ($char['level'] >= 2) $weightedTypes['green'] = 20;
+                if ($char['level'] >= 3) $weightedTypes['yellow'] = 10;
+            } elseif ($char['level'] <= 9) {
+                // Easier progression from level 5-9
+                $weightedTypes = ['standard' => 40];
+                if ($char['level'] >= 5) $weightedTypes['green'] = 35;
+                if ($char['level'] >= 5) $weightedTypes['yellow'] = 20;
+                if ($char['level'] >= 7) $weightedTypes['orange'] = 15;
+            } else {
+                // Normal progression at level 10+
+                $weightedTypes = ['standard' => 20];
+                if ($char['level'] >= 2) $weightedTypes['green'] = 30;
+                if ($char['level'] >= 3) $weightedTypes['yellow'] = 60;
+                if ($char['level'] >= 5) $weightedTypes['orange'] = 70;
+                if ($char['level'] >= 7) $weightedTypes['red'] = 60;
+            }
             
             $rand = mt_rand(1, array_sum($weightedTypes));
             $cur = 0;
@@ -1035,44 +1049,41 @@ if ($action === 'combat_attack') {
         $enemyType = $cState['enemy_type'] ?? 'standard';
         $enemyLevel = $cState['enemy_level'] ?? 1;
         
-        // Gold Formula with type-based multipliers and minimum values
-        $goldMultiplier = 1.0;
-        $minGold = 1;
-        $maxGold = 10;
-        
+        // Coin rewards (in copper), no scaling by enemy level
+        $minCopper = 5;
+        $maxCopper = 12;
+
         if ($enemyType === 'green') {
-            $goldMultiplier = 1.5;
+            $minCopper = 10;
+            $maxCopper = 20;
         } elseif ($enemyType === 'yellow') {
-            $goldMultiplier = 2.0;
-            $minGold = 3;
+            $minCopper = 20;
+            $maxCopper = 35;
         } elseif ($enemyType === 'orange') {
-            $goldMultiplier = 3.0;
-            $minGold = 4;
-            $maxGold = 15;
+            $minCopper = 40;
+            $maxCopper = 80;
         } elseif ($enemyType === 'red') {
-            $goldMultiplier = 4.0;
-            $minGold = 5;
-            $maxGold = 20;
+            $minCopper = 100;
+            $maxCopper = 200;
         }
-        
-        $baseGold = rand($minGold, $maxGold);
-        $goldReward = (int)floor($baseGold * $goldMultiplier * (1 + $enemyLevel / 10));
+
+        $goldReward = rand($minCopper, $maxCopper);
         
         $dropId = 0;
         $dropChance = 0;
         
-        if ($enemyType === 'standard') { $dropId = 20; $dropChance = 50; } // Rat Tail
+        if ($enemyType === 'standard') { $dropId = 20; $dropChance = 100; } // Rat Tail
         elseif ($enemyType === 'green') { $dropId = 21; $dropChance = 45; } // Goblin Ear
         elseif ($enemyType === 'yellow') { $dropId = 22; $dropChance = 40; } // Bandit Insignia
         elseif ($enemyType === 'orange') { $dropId = 23; $dropChance = 35; } // Lava Core
         elseif ($enemyType === 'red') { $dropId = 24; $dropChance = 30; } // Demon Horn
         
         if ($dropId > 0 && rand(1, 100) <= $dropChance) {
-            // Scale item value by enemy level (10% per level)
+            // Use base drop value (no scaling by enemy level)
             $stmt = $pdo->prepare("SELECT name, price FROM items WHERE id = ?"); 
             $stmt->execute([$dropId]);
             $itemData = $stmt->fetch(PDO::FETCH_ASSOC);
-            $scaledValue = (int)floor($itemData['price'] * (1 + $enemyLevel * 0.1));
+            $scaledValue = (int)$itemData['price'];
             
             $pdo->prepare("INSERT INTO inventory (character_id, item_id, quantity, item_value) VALUES (?, ?, 1, ?) ON DUPLICATE KEY UPDATE quantity = quantity + 1, item_value = GREATEST(item_value, ?)")->execute([$charId, $dropId, $scaledValue, $scaledValue]);
             $dropItem = $itemData['name'];
@@ -1084,11 +1095,11 @@ if ($action === 'combat_attack') {
         $char['in_combat'] = 0; 
         $char['combat_state'] = NULL;
         
-        $log .= " (+$xp XP, +$goldReward Gold)";
+        $log .= " (+$xp XP, +$goldReward coins)";
         
         // --- SPRAWDZENIE UKOŃCZENIA TUTORIALU ---
         if ($char['world_id'] == 1 && $char['tutorial_completed'] == 0) {
-            $char['gold'] += 50; // Bonus gold for tutorial
+            $char['gold'] += 50; // Bonus coins for tutorial
             $pdo->prepare("UPDATE characters SET tutorial_completed = 1 WHERE id = ?")->execute([$charId]);
             $char['tutorial_completed'] = 1;
             $tutorialFinishedNow = true;
@@ -1306,6 +1317,21 @@ if ($action === 'spend_stat_point') {
         
         $pdo->prepare("UPDATE characters SET stat_points=?, base_attack=?, base_defense=?, max_hp=?, hp=?, max_energy=?, energy=? WHERE id=?")
             ->execute([$char['stat_points'], $char['base_attack'], $char['base_defense'], $char['max_hp'], $char['hp'], $char['max_energy'], $char['energy'], $charId]);
+        
+        // Calculate attack and defense with equipped items
+        $invStmt = $pdo->prepare("SELECT i.id as item_id, i.name, i.type, i.power, i.icon, i.description, COALESCE(inv.item_value, i.price) as price, i.rarity, inv.quantity, inv.is_equipped FROM inventory inv JOIN items i ON inv.item_id = i.id WHERE inv.character_id = ?");
+        $invStmt->execute([$charId]);
+        $inventory = $invStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $totalAttack = 1 + ($char['base_attack'] ?? 1); 
+        $totalDefense = ($char['base_defense'] ?? 0);
+        foreach ($inventory as $item) {
+            if ($item['is_equipped'] && $item['type'] == 'weapon') $totalAttack += $item['power'];
+            if ($item['is_equipped'] && $item['type'] == 'armor') $totalDefense += $item['power'];
+        }
+
+        $char['attack'] = $totalAttack;
+        $char['defense'] = $totalDefense;
             
         echo json_encode(['status' => 'success', 'data' => $char]); exit;
     }
@@ -1354,9 +1380,9 @@ if ($action === 'buy_item') {
     $item = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if (!$item) { echo json_encode(['status' => 'error', 'message' => 'Item not found']); exit; }
-    if ($char['gold'] < $item['price']) { echo json_encode(['status' => 'error', 'message' => 'Not enough gold!']); exit; }
+    if ($char['gold'] < $item['price']) { echo json_encode(['status' => 'error', 'message' => 'Not enough coins!']); exit; }
     
-    // Deduct gold
+    // Deduct coins
     $newGold = $char['gold'] - $item['price'];
     $pdo->prepare("UPDATE characters SET gold = ? WHERE id = ?")->execute([$newGold, $charId]);
     
@@ -1417,6 +1443,327 @@ if ($action === 'sell_item') {
     else { $pdo->prepare("DELETE FROM inventory WHERE id = ?")->execute([$row['inv_id']]); }
     
     $pdo->prepare("UPDATE characters SET gold = gold + ? WHERE id = ?")->execute([$sellPrice, $charId]);
-    echo json_encode(['status' => 'success', 'gold' => $char['gold'] + $sellPrice, 'message' => "Sold for $sellPrice gold."]); exit;
+    echo json_encode(['status' => 'success', 'gold' => $char['gold'] + $sellPrice, 'message' => "Sold for $sellPrice coins."]); exit;
 }
+
+// --- QUEST SYSTEM ---
+
+if ($action === 'get_available_quests') {
+    $shopType = $input['shop_type'] ?? null;
+    
+    $char = $pdo->query("SELECT level FROM characters WHERE id = $charId")->fetch(PDO::FETCH_ASSOC);
+    $level = $char['level'];
+    
+    // Check total quests in DB
+    $totalQuests = $pdo->query("SELECT COUNT(*) FROM quests")->fetchColumn();
+    error_log("DEBUG: Total quests in DB: $totalQuests");
+    
+    // Check if character is in any guild
+    $guildCheck = $pdo->prepare("SELECT COUNT(*) FROM guild_members WHERE character_id = ?");
+    $guildCheck->execute([$charId]);
+    $isInGuild = $guildCheck->fetchColumn() > 0;
+    
+    $activeStmt = $pdo->prepare("SELECT quest_id FROM character_quests WHERE character_id = ? AND status = 'active'");
+    $activeStmt->execute([$charId]);
+    $activeQuestIds = $activeStmt->fetchAll(PDO::FETCH_COLUMN);
+    
+    $query = "SELECT * FROM quests WHERE min_level <= ? AND (max_level IS NULL OR max_level >= ?)";
+    $params = [$level, $level];
+    
+    error_log("DEBUG: Query before guild filter: $query with params: " . json_encode($params));
+    
+    // Filter guild quests based on membership  
+    if ($isInGuild) {
+        // Show all quests (both regular and guild) - no additional filter needed
+    } else {
+        // Show only non-guild quests
+        $query .= " AND (guild_required = 0 OR guild_required IS NULL)";
+    }
+    
+    if ($shopType) {
+        $query .= " AND shop_type = ?";
+        $params[] = $shopType;
+    }
+    
+    error_log("DEBUG: Final query: $query");
+    error_log("DEBUG: Level=$level, InGuild=" . ($isInGuild ? 'yes' : 'no') . ", ShopType=" . ($shopType ?? 'null'));
+    
+    $stmt = $pdo->prepare($query);
+    $stmt->execute($params);
+    $quests = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    error_log("DEBUG: Found " . count($quests) . " quests after level/guild filter");
+    
+    $quests = array_filter($quests, function($q) use ($activeQuestIds) {
+        return !in_array($q['id'], $activeQuestIds);
+    });
+    
+    error_log("DEBUG: " . count($quests) . " quests after filtering active (active IDs: " . json_encode($activeQuestIds) . ")");
+    
+    foreach ($quests as &$quest) {
+        $quest['required_items'] = json_decode($quest['required_items'], true);
+    }
+    
+    echo json_encode(['status' => 'success', 'quests' => array_values($quests)]); exit;
+}
+
+if ($action === 'accept_quest') {
+    $questId = (int)($input['quest_id'] ?? 0);
+    
+    $quest = $pdo->prepare("SELECT * FROM quests WHERE id = ?");
+    $quest->execute([$questId]);
+    $quest = $quest->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$quest) { echo json_encode(['status' => 'error', 'message' => 'Quest not found']); exit; }
+    
+    $char = $pdo->prepare("SELECT level FROM characters WHERE id = ?");
+    $char->execute([$charId]);
+    $char = $char->fetch(PDO::FETCH_ASSOC);
+    
+    if ($char['level'] < $quest['min_level']) {
+        echo json_encode(['status' => 'error', 'message' => 'Level too low']); exit;
+    }
+    
+    // Quest 1-3 cannot be done by level 10+ players
+    if ($char['level'] >= 10 && in_array($questId, [1, 2, 3])) {
+        echo json_encode(['status' => 'error', 'message' => 'This quest is too low level for you']); exit;
+    }
+    
+    // Check if already active
+    $existing = $pdo->prepare("SELECT id, status FROM character_quests WHERE character_id = ? AND quest_id = ? AND status = 'active'");
+    $existing->execute([$charId, $questId]);
+    if ($existing->fetch()) {
+        echo json_encode(['status' => 'error', 'message' => 'Quest already active']); exit;
+    }
+    
+    // For repeatable quests: reset the completed one instead of inserting new
+    if ($quest['repeatable']) {
+        // Quest is repeatable - check if completed version exists
+        $completed = $pdo->prepare("SELECT id FROM character_quests WHERE character_id = ? AND quest_id = ? AND status = 'completed'");
+        $completed->execute([$charId, $questId]);
+        $completedRow = $completed->fetch();
+        
+        if ($completedRow) {
+            // Reset the completed quest to active
+            $pdo->prepare("UPDATE character_quests SET status = 'active', progress = '{}', completed_at = NULL WHERE id = ?")->execute([$completedRow['id']]);
+        } else {
+            // No completed version yet, insert new
+            $stmt = $pdo->prepare("INSERT INTO character_quests (character_id, quest_id, status, progress) VALUES (?, ?, 'active', '{}')");
+            $stmt->execute([$charId, $questId]);
+        }
+    } else {
+        // Normal insert for non-repeatable
+        $stmt = $pdo->prepare("INSERT INTO character_quests (character_id, quest_id, status, progress) VALUES (?, ?, 'active', '{}')");
+        $stmt->execute([$charId, $questId]);
+    }
+    
+    echo json_encode(['status' => 'success', 'message' => 'Quest accepted!']); exit;
+}
+
+if ($action === 'get_active_quests') {
+    $stmt = $pdo->prepare("
+        SELECT cq.id as char_quest_id, cq.status, cq.progress, q.* 
+        FROM character_quests cq 
+        JOIN quests q ON cq.quest_id = q.id 
+        WHERE cq.character_id = ? AND cq.status = 'active'
+    ");
+    $stmt->execute([$charId]);
+    $quests = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    foreach ($quests as &$quest) {
+        $quest['required_items'] = json_decode($quest['required_items'], true);
+        $quest['progress'] = json_decode($quest['progress'], true) ?: [];
+        
+        $canComplete = true;
+        foreach ($quest['required_items'] as $reqItem) {
+            // SUM all slots with this item (not just first slot)
+            $inv = $pdo->prepare("SELECT COALESCE(SUM(quantity), 0) as total_quantity FROM inventory WHERE character_id = ? AND item_id = ?");
+            $inv->execute([$charId, $reqItem['id']]);
+            $invRow = $inv->fetch(PDO::FETCH_ASSOC);
+            $has = $invRow ? (int)$invRow['total_quantity'] : 0;
+            
+            $quest['progress'][$reqItem['id']] = $has;
+            if ($has < $reqItem['quantity']) {
+                $canComplete = false;
+            }
+        }
+        $quest['can_complete'] = $canComplete;
+    }
+    
+    echo json_encode(['status' => 'success', 'quests' => $quests]); exit;
+}
+
+if ($action === 'complete_quest') {
+    $charQuestId = (int)($input['char_quest_id'] ?? 0);
+    
+    $stmt = $pdo->prepare("
+        SELECT cq.*, q.* 
+        FROM character_quests cq 
+        JOIN quests q ON cq.quest_id = q.id 
+        WHERE cq.id = ? AND cq.character_id = ? AND cq.status = 'active'
+    ");
+    $stmt->execute([$charQuestId, $charId]);
+    $quest = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$quest) { echo json_encode(['status' => 'error', 'message' => 'Quest not found or not active']); exit; }
+    
+    $requiredItems = json_decode($quest['required_items'], true);
+    
+    // FIRST: Check if we have all items BEFORE starting transaction
+    foreach ($requiredItems as $reqItem) {
+        $inv = $pdo->prepare("SELECT COALESCE(SUM(quantity), 0) as total_qty FROM inventory WHERE character_id = ? AND item_id = ?");
+        $inv->execute([$charId, $reqItem['id']]);
+        $row = $inv->fetch(PDO::FETCH_ASSOC);
+        if ((int)$row['total_qty'] < $reqItem['quantity']) {
+            echo json_encode(['status' => 'error', 'message' => 'Missing required items']); exit;
+        }
+    }
+    
+    // NOW start transaction for actual removal
+    $pdo->beginTransaction();
+    try {
+        foreach ($requiredItems as $reqItem) {
+            // Get ALL inventory slots with this item
+            $invStmt = $pdo->prepare("SELECT id, quantity FROM inventory WHERE character_id = ? AND item_id = ? ORDER BY id");
+            $invStmt->execute([$charId, $reqItem['id']]);
+            $invSlots = $invStmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Remove items from slots (starting from first, removing as needed)
+            $needed = $reqItem['quantity'];
+            foreach ($invSlots as $slot) {
+                if ($needed <= 0) break;
+                $takeFromThisSlot = min($needed, $slot['quantity']);
+                if ($slot['quantity'] - $takeFromThisSlot > 0) {
+                    $pdo->prepare("UPDATE inventory SET quantity = quantity - ? WHERE id = ?")->execute([$takeFromThisSlot, $slot['id']]);
+                } else {
+                    $pdo->prepare("DELETE FROM inventory WHERE id = ?")->execute([$slot['id']]);
+                }
+                $needed -= $takeFromThisSlot;
+            }
+        }
+        
+        $pdo->prepare("UPDATE characters SET gold = gold + ? WHERE id = ?")->execute([$quest['reward_gold'], $charId]);
+        
+        // Update or insert reputation (more explicit)
+        $checkRep = $pdo->prepare("SELECT points FROM reputation WHERE character_id = ?");
+        $checkRep->execute([$charId]);
+        $repExists = $checkRep->fetch(PDO::FETCH_ASSOC);
+        
+        if ($repExists) {
+            // Update existing
+            $newRep = (int)$repExists['points'] + (int)$quest['reward_reputation'];
+            $pdo->prepare("UPDATE reputation SET points = ? WHERE character_id = ?")->execute([$newRep, $charId]);
+        } else {
+            // Insert new
+            $pdo->prepare("INSERT INTO reputation (character_id, points) VALUES (?, ?)")->execute([$charId, $quest['reward_reputation']]);
+        }
+        
+        $pdo->prepare("UPDATE character_quests SET status = 'completed', completed_at = NOW() WHERE id = ?")->execute([$charQuestId]);
+        
+        $pdo->commit();
+        
+        // Get final reputation value
+        $rep = $pdo->prepare("SELECT points FROM reputation WHERE character_id = ?");
+        $rep->execute([$charId]);
+        $repRow = $rep->fetch(PDO::FETCH_ASSOC);
+        $repPoints = $repRow ? (int)$repRow['points'] : 0;
+        
+        // Format currency: 100 copper = 1 silver, 100 silver = 1 gold
+        $rewardAmount = $quest['reward_gold'];
+        if ($rewardAmount >= 10000) {
+            $gold = floor($rewardAmount / 10000);
+            $remainder = $rewardAmount % 10000;
+            $silver = floor($remainder / 100);
+            $currencyText = $silver > 0 ? "{$gold} gold, {$silver} silver" : "{$gold} gold";
+        } elseif ($rewardAmount >= 100) {
+            $silver = floor($rewardAmount / 100);
+            $copper = $rewardAmount % 100;
+            $currencyText = $copper > 0 ? "{$silver} silver, {$copper} copper" : "{$silver} silver";
+        } else {
+            $currencyText = "{$rewardAmount} copper coins";
+        }
+        
+        echo json_encode([
+            'status' => 'success', 
+            'message' => "Quest completed! +{$currencyText}, +{$quest['reward_reputation']} reputation",
+            'gold' => $quest['reward_gold'],
+            'reputation' => $repPoints
+        ]); exit;
+        
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        echo json_encode(['status' => 'error', 'message' => 'Transaction failed: ' . $e->getMessage()]); exit;
+    }
+}
+
+if ($action === 'abandon_quest') {
+    $charQuestId = (int)($input['char_quest_id'] ?? 0);
+    
+    $stmt = $pdo->prepare("DELETE FROM character_quests WHERE id = ? AND character_id = ? AND status = 'active'");
+    $stmt->execute([$charQuestId, $charId]);
+    
+    if ($stmt->rowCount() > 0) {
+        echo json_encode(['status' => 'success', 'message' => 'Quest abandoned']); exit;
+    } else {
+        echo json_encode(['status' => 'error', 'message' => 'Quest not found']); exit;
+    }
+}
+
+if ($action === 'get_reputation') {
+    $stmt = $pdo->prepare("SELECT points FROM reputation WHERE character_id = ?");
+    $stmt->execute([$charId]);
+    $rep = $stmt->fetch(PDO::FETCH_ASSOC);
+    $points = $rep ? (int)$rep['points'] : 0;
+    
+    echo json_encode(['status' => 'success', 'reputation' => $points]); exit;
+}
+
+if ($action === 'get_guilds') {
+    $guilds = $pdo->query("SELECT * FROM guilds ORDER BY required_reputation ASC")->fetchAll(PDO::FETCH_ASSOC);
+    
+    $rep = $pdo->prepare("SELECT points FROM reputation WHERE character_id = ?");
+    $rep->execute([$charId]);
+    $repRow = $rep->fetch(PDO::FETCH_ASSOC);
+    $repPoints = $repRow ? (int)$repRow['points'] : 0;
+    
+    $member = $pdo->prepare("SELECT guild_id FROM guild_members WHERE character_id = ?");
+    $member->execute([$charId]);
+    $memberRow = $member->fetch(PDO::FETCH_ASSOC);
+    $currentGuildId = $memberRow ? $memberRow['guild_id'] : null;
+    
+    foreach ($guilds as &$guild) {
+        $guild['can_join'] = ($repPoints >= $guild['required_reputation']) && ($currentGuildId === null);
+        $guild['is_member'] = ($currentGuildId == $guild['id']);
+    }
+    
+    echo json_encode(['status' => 'success', 'guilds' => $guilds, 'reputation' => $repPoints]); exit;
+}
+
+if ($action === 'join_guild') {
+    $guildId = (int)($input['guild_id'] ?? 0);
+    
+    $member = $pdo->prepare("SELECT guild_id FROM guild_members WHERE character_id = ?");
+    $member->execute([$charId]);
+    if ($member->fetch()) {
+        echo json_encode(['status' => 'error', 'message' => 'Already in a guild']); exit;
+    }
+    
+    $guild = $pdo->query("SELECT * FROM guilds WHERE id = $guildId")->fetch(PDO::FETCH_ASSOC);
+    if (!$guild) { echo json_encode(['status' => 'error', 'message' => 'Guild not found']); exit; }
+    
+    $rep = $pdo->prepare("SELECT points FROM reputation WHERE character_id = ?");
+    $rep->execute([$charId]);
+    $repRow = $rep->fetch(PDO::FETCH_ASSOC);
+    $repPoints = $repRow ? (int)$repRow['points'] : 0;
+    
+    if ($repPoints < $guild['required_reputation']) {
+        echo json_encode(['status' => 'error', 'message' => 'Insufficient reputation']); exit;
+    }
+    
+    $stmt = $pdo->prepare("INSERT INTO guild_members (guild_id, character_id, rank) VALUES (?, ?, 'member')");
+    $stmt->execute([$guildId, $charId]);
+    
+    echo json_encode(['status' => 'success', 'message' => "Joined {$guild['name']}!"]); exit;
+}
+
 ?>

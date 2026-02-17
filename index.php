@@ -185,11 +185,16 @@ header('Expires: 0');
         /* --- UI PANEL --- */
         #right-panel { 
             width: 350px; 
-            background: #1e1e1e; 
-            border-left: 1px solid #333; 
+            background: linear-gradient(180deg, #2a1e14 0%, #1f1610 100%);
+            background-image: 
+                repeating-linear-gradient(90deg, rgba(0,0,0,0.1) 0px, transparent 1px, transparent 3px, rgba(0,0,0,0.1) 4px),
+                repeating-linear-gradient(0deg, rgba(0,0,0,0.05) 0px, transparent 1px, transparent 2px);
+            border-left: 3px solid #4a3826;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.5), -5px 0 15px rgba(0,0,0,0.4);
             display: flex; flex-direction: column; z-index: 200; 
             flex-shrink: 0;
             transition: margin-right 0.4s ease-in-out, transform 0.4s ease-in-out;
+            image-rendering: pixelated;
         }
         .panel-collapsed #right-panel {
             margin-right: -350px;
@@ -197,12 +202,63 @@ header('Expires: 0');
         .panel-collapsed #expand-panel-btn {
             display: block;
         }
-        .tabs { display: flex; background: #252525; border-bottom: 1px solid #333; }
-        .tab-btn { background: transparent; color: #888; border: none; padding: 15px 8px; cursor: pointer; flex: 1; font-weight: bold; font-size: 13px; }
-        .tab-btn.active { color: #fff; background: #333; border-bottom: 3px solid #f44336; }
-        .class-filter-btn { background: transparent; color: #888; border: 1px solid #555; padding: 8px 15px; cursor: pointer; font-weight: bold; border-radius: 4px; font-size: 12px; opacity: 0.6; transition: opacity 0.2s, color 0.2s; }
-        .class-filter-btn:hover { opacity: 0.8; }
-        .tab-content { display: none; padding: 20px; overflow-y: auto; }
+        .tabs { 
+            display: flex; 
+            background: linear-gradient(180deg, #3d2f1f 0%, #2a1e14 100%);
+            border-bottom: 2px solid #61491f;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+        }
+        .tab-btn { 
+            background: linear-gradient(180deg, rgba(139,115,85,0.75), rgba(101,73,31,0.65));
+            color: #c9a875; 
+            border: none;
+            border-right: 1px solid #4a3826;
+            padding: 15px 8px; 
+            cursor: pointer; 
+            flex: 1; 
+            font-weight: bold; 
+            font-size: 13px;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+            transition: all 0.2s;
+            position: relative;
+        }
+        .tab-btn:hover {
+            background: linear-gradient(180deg, rgba(139,115,85,0.85), rgba(101,73,31,0.75));
+            color: #f4d58d;
+        }
+        .tab-btn.active { 
+            color: #ffeaa7; 
+            background: linear-gradient(180deg, #61491f, #4a3826);
+            border-bottom: 3px solid #d4af37;
+            box-shadow: inset 0 2px 5px rgba(0,0,0,0.4);
+        }
+        .class-filter-btn { 
+            background: linear-gradient(135deg, rgba(58,42,26,0.92), rgba(45,31,18,0.98));
+            color: #c9a875;
+            border: 2px solid #5c4a35;
+            padding: 8px 15px; 
+            cursor: pointer; 
+            font-weight: bold;
+            border-radius: 3px;
+            font-size: 12px;
+            opacity: 0.95;
+            transition: all 0.2s;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+            box-shadow: 0 2px 0 rgba(0,0,0,0.4);
+        }
+        .class-filter-btn:hover { 
+            opacity: 1;
+            background: linear-gradient(135deg, rgba(68,52,36,0.8), rgba(55,41,28,0.9));
+            color: #f4d58d;
+            transform: translateY(-1px);
+            box-shadow: 0 3px 0 rgba(0,0,0,0.5);
+        }
+        .tab-content { 
+            display: none; 
+            padding: 20px; 
+            overflow-y: auto;
+            background: linear-gradient(180deg, rgba(42,30,20,0.85), rgba(31,22,16,0.9));
+        }
         .tab-content.active { display: block; }
         
         .bar-container { width: 100%; height: 8px; background: #333; border-radius: 4px; overflow: hidden; margin-top: 5px; }
@@ -237,12 +293,29 @@ header('Expires: 0');
         
         .item-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
         .item-slot { 
-            background: #252525; border: 1px solid #444; border-radius: 5px; 
-            height: 60px; display: flex; flex-direction: column; align-items: center; justify-content: center;
-            position: relative; transition: all 0.2s;
+            background: linear-gradient(135deg, #352316 0%, #281b0f 50%, #352316 100%);
+            border: 2px solid #5c4a35;
+            border-radius: 3px;
+            height: 60px; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center;
+            position: relative; 
+            transition: all 0.2s;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.3);
+            image-rendering: pixelated;
         }
-        .item-slot:hover { border-color: #aaa; background: #333; }
-        .item-slot.equipped { border-color: #ffd700; box-shadow: 0 0 5px #ffd700; }
+        .item-slot:hover { 
+            border-color: #8b7355; 
+            background: linear-gradient(135deg, #4a3a2a 0%, #3d2f22 50%, #4a3a2a 100%);
+            transform: translateY(-2px);
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.5), 0 4px 8px rgba(0,0,0,0.4);
+        }
+        .item-slot.equipped { 
+            border-color: #d4af37;
+            box-shadow: 0 0 8px #d4af37, inset 0 0 10px rgba(212,175,55,0.3);
+        }
         
         /* Ikony przycisków */
         .icon-btn { background: none; border: none; cursor: pointer; padding: 5px; transition: transform 0.2s; display: inline-flex; align-items: center; justify-content: center; }
@@ -250,7 +323,19 @@ header('Expires: 0');
         .icon-btn img { width: 32px; height: 32px; image-rendering: pixelated; }
 
         /* Modale */
-        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 10050; display: none; flex-direction: column; align-items: center; justify-content: center; color: white; }
+        .modal { 
+            position: fixed; 
+            top: 0; left: 0; 
+            width: 100%; height: 100%; 
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(3px);
+            z-index: 10050; 
+            display: none; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            color: #f4d58d;
+        }
         #combat-screen.modal { background: transparent !important; background-color: transparent !important; }
         #combat-screen {
             background-color: #050011;
@@ -279,7 +364,30 @@ header('Expires: 0');
         body.combat-active #game-layout {
             display: none !important;
         }
-        .combat-btn { padding: 12px 30px; background: #c62828; color: white; border: none; font-size: 16px; margin: 10px; cursor: pointer; border-radius: 4px; font-weight: bold; }
+        .combat-btn { 
+            padding: 12px 30px; 
+            background: linear-gradient(180deg, #8b4513 0%, #6b3410 50%, #4a220c 100%);
+            color: #ffeaa7; 
+            border: 2px solid #5c3a1f;
+            border-radius: 2px;
+            font-size: 16px; 
+            margin: 10px; 
+            cursor: pointer;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+            box-shadow: 0 3px 0 #3a1f0c, 0 5px 8px rgba(0,0,0,0.4);
+            transition: all 0.1s;
+            image-rendering: pixelated;
+        }
+        .combat-btn:hover {
+            background: linear-gradient(180deg, #9b5523 0%, #7b4420 50%, #5a321c 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 0 #3a1f0c, 0 6px 10px rgba(0,0,0,0.5);
+        }
+        .combat-btn:active {
+            transform: translateY(2px);
+            box-shadow: 0 1px 0 #3a1f0c, 0 2px 4px rgba(0,0,0,0.3);
+        }
 
         /* --- COMBAT LAYOUT (BASE) --- */
         #combat-screen {
@@ -354,33 +462,91 @@ header('Expires: 0');
             background-image: url('img/1.png');
             z-index: 1;
             background-repeat: repeat-x;
-            background-size: auto 100%;
-            animation: startLayer1Drift 18s linear infinite;
-            will-change: transform;
+            background-size: 2000px auto;
+            animation: startLayer1Drift 90s linear infinite, cloudFloat 8s ease-in-out infinite;
+            will-change: background-position, transform;
         }
         @keyframes startLayer1Drift {
-            0% { transform: translate(0, 0); }
-            50% { transform: translate(-12%, -6px); }
-            100% { transform: translate(-24%, 0); }
+            from { background-position: 0 0; }
+            to { background-position: -2000px 0; }
         }
-        .class-card { padding: 20px; border: 2px solid #444; border-radius: 10px; cursor: pointer; text-align: center; width: 120px; transition: 0.3s; }
-        .class-card:hover { border-color: #f44336; background: #222; transform: translateY(-5px); }
+        .class-card { 
+            padding: 20px;
+            border: 3px solid #5c4a35;
+            border-radius: 4px;
+            cursor: pointer; 
+            text-align: center; 
+            width: 120px; 
+            transition: 0.3s;
+            background: linear-gradient(135deg, #352316 0%, #281b0f 100%);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1);
+            color: #f4d58d;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+            image-rendering: pixelated;
+        }
+        .class-card:hover { 
+            border-color: #d4af37;
+            background: linear-gradient(135deg, #4a3a2a 0%, #3d2f22 100%);
+            transform: translateY(-5px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.6), 0 0 10px rgba(212,175,55,0.3);
+            color: #ffeaa7;
+        }
         
         /* Lista Światów */
-        .world-item { background: #333; border: 1px solid #555; padding: 15px; margin: 5px; width: 300px; text-align: center; border-radius: 5px; transition: 0.2s; }
-        .world-item:hover { background: #444; border-color: #00e676; }
+        .world-item { 
+            background: linear-gradient(135deg, #352316 0%, #281b0f 100%);
+            border: 2px solid #5c4a35;
+            padding: 15px; 
+            margin: 5px; 
+            width: 300px; 
+            text-align: center;
+            border-radius: 3px;
+            transition: 0.2s;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1);
+            color: #f4d58d;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+            image-rendering: pixelated;
+        }
+        .world-item:hover { 
+            background: linear-gradient(135deg, #4a3a2a 0%, #3d2f22 100%);
+            border-color: #8b7355;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.6);
+            color: #ffeaa7;
+        }
 
         /* Przycisk zmiany świata */
         #world-btn {
             position: absolute; top: 10px; right: 20px; 
-            padding: 10px 20px; background: #00e676; color: #000; 
-            font-weight: bold; border: none; border-radius: 5px; cursor: pointer;
-            z-index: 1600; display: none; box-shadow: 0 0 10px rgba(0,230,118,0.5);
+            padding: 10px 20px;
+            background: linear-gradient(180deg, #2d8b57 0%, #1f6b3f 50%, #164d2e 100%);
+            color: #e8f5e9;
+            font-weight: bold; 
+            border: 2px solid #3d6b4a;
+            border-radius: 2px;
+            cursor: pointer;
+            z-index: 1600; 
+            display: none;
+            box-shadow: 0 3px 0 #0f3d1e, 0 5px 10px rgba(0,230,118,0.3);
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+            transition: all 0.1s;
+            image-rendering: pixelated;
         }
-        #world-btn:hover { background: #00c853; }
+        #world-btn:hover { 
+            background: linear-gradient(180deg, #3d9b67 0%, #2f7b4f 50%, #1f5d3e 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 0 #0f3d1e, 0 6px 12px rgba(0,230,118,0.4);
+        }
 
         /* Przycisk zamknięcia (czerwony X, jak w Windows XP) */
-        .modal-panel { position: relative; }
+        .modal-panel { 
+            position: relative;
+            background: linear-gradient(145deg, #38291c, #271a11);
+            border: 3px solid #61491f;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.1);
+            border-radius: 4px;
+            image-rendering: pixelated;
+        }
         /* Auth & Character Selection */
         .auth-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: transparent; z-index: 2001; display: none; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
         .auth-bg-layer {
@@ -399,29 +565,147 @@ header('Expires: 0');
             background-image: url('img/1.png');
             z-index: 1;
             background-repeat: repeat-x;
-            background-size: auto 100%;
-            animation: authLayer1Drift 40s linear infinite, authLayer1Float 6s ease-in-out infinite;
-            will-change: transform, background-position;
+            background-size: 2000px auto;
+            animation: authLayer1Drift 90s linear infinite, cloudFloat 8s ease-in-out infinite;
+            will-change: background-position, transform;
         }
         @keyframes authLayer1Drift {
-            0% { background-position-x: 0; }
-            100% { background-position-x: -100%; }
+            from { background-position: 0 0; }
+            to { background-position: -2000px 0; }
         }
-        @keyframes authLayer1Float {
+        @keyframes cloudFloat {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-8px); }
+        }
+        .auth-content {
+            position: relative;
+            z-index: 5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            padding: 20px;
+            width: auto;
+            max-width: 92vw;
+            box-sizing: border-box;
+        }
+        .auth-logo {
+            display: inline-block;
+            width: fit-content;
+            max-width: 100%;
+            text-align: center;
+            padding: 12px 20px;
+            border-radius: 4px;
+            background: linear-gradient(145deg, rgba(61, 47, 31, 0.6), rgba(42, 30, 20, 0.6));
+            background-image: repeating-linear-gradient(45deg, transparent, transparent 8px, rgba(0,0,0,0.12) 8px, rgba(0,0,0,0.12) 16px);
+            border: 3px solid #61491f;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.1), 0 0 20px rgba(212,175,55,0.2);
+            animation: authLogoFloat 6s ease-in-out infinite;
+            image-rendering: pixelated;
+        }
+        .auth-logo-main {
+            display: block;
+            font-size: clamp(36px, 8vw, 96px);
+            line-height: 0.95;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: #ffeaa7;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.9), 0 0 20px rgba(212,175,55,0.5);
+            animation: authLogoGlow 4s ease-in-out infinite;
+        }
+        @keyframes authLogoFloat {
             0% { transform: translateY(0); }
             50% { transform: translateY(-6px); }
             100% { transform: translateY(0); }
         }
-        .auth-form { background: rgba(27,27,27,0.9); padding: 30px; border-radius: 8px; width: 300px; color: #fff; position: relative; z-index: 5; }
-        .auth-form h2 { margin-top: 0; color: #00e676; }
-        .auth-form input { width: 100%; padding: 10px; margin: 10px 0; background: #252525; border: 1px solid #444; color: #fff; border-radius: 4px; box-sizing: border-box; }
-        .auth-form button { width: 100%; padding: 12px; background: #00e676; color: #000; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; margin-top: 10px; }
-        .auth-form button:hover { background: #00c853; }
-        .auth-form .toggle-link { text-align: center; margin-top: 15px; color: #888; font-size: 12px; }
-        .auth-form .toggle-link a { color: #00e676; cursor: pointer; text-decoration: underline; }
+        @keyframes authLogoGlow {
+            0% { text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.9), 0 0 16px rgba(212,175,55,0.4); }
+            50% { text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.9), 0 0 24px rgba(212,175,55,0.7); }
+            100% { text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.9), 0 0 16px rgba(212,175,55,0.4); }
+        }
+        .auth-form {
+            background: rgba(45, 31, 18, 0.6);
+            background-image: 
+                repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(0,0,0,0.18) 10px, rgba(0,0,0,0.18) 20px),
+                linear-gradient(145deg, rgba(56, 41, 28, 0.6), rgba(39, 26, 17, 0.6));
+            padding: 24px;
+            border-radius: 4px;
+            width: min(92vw, 340px);
+            color: #f4d58d;
+            position: relative;
+            border: 3px solid #61491f;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.1);
+            image-rendering: pixelated;
+        }
+        .auth-form h2 { margin-top: 0; color: #ffeaa7; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); }
+        .auth-form input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            background: linear-gradient(135deg, rgba(20,15,10,0.98), rgba(30,20,15,1));
+            border: 2px solid #5c4a35;
+            color: #f4d58d;
+            border-radius: 3px;
+            box-sizing: border-box;
+            text-shadow: 1px 1px 1px rgba(0,0,0,0.5);
+            transition: all 0.2s;
+        }
+        .auth-form input::placeholder {
+            color: #8b7355;
+        }
+        .auth-form input:focus {
+            outline: none;
+            border-color: #8b7355;
+            box-shadow: 0 0 0 2px rgba(139,115,85,0.3);
+            background: linear-gradient(135deg, rgba(30,22,15,0.95), rgba(40,28,20,1));
+        }
+        .auth-form button {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(180deg, #8b4513 0%, #6b3410 50%, #4a220c 100%);
+            color: #ffeaa7;
+            border: 2px solid #5c3a1f;
+            border-radius: 2px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+            box-shadow: 0 3px 0 #3a1f0c, 0 5px 8px rgba(0,0,0,0.4);
+            transition: all 0.1s;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+        }
+        .auth-form button:hover { 
+            background: linear-gradient(180deg, #9b5523 0%, #7b4420 50%, #5a321c 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 0 #3a1f0c, 0 6px 10px rgba(0,0,0,0.5);
+        }
+        .auth-form button:active {
+            transform: translateY(2px);
+            box-shadow: 0 1px 0 #3a1f0c, 0 2px 4px rgba(0,0,0,0.3);
+        }
+        .auth-form .toggle-link { text-align: center; margin-top: 15px; color: #8b7355; font-size: 12px; }
+        .auth-form .toggle-link a { color: #d4af37; cursor: pointer; text-decoration: underline; transition: color 0.2s; }
+        .auth-form .toggle-link a:hover { color: #ffeaa7; }
+        .auth-form label { color: #c9a875; }
+        @media (max-height: 700px) {
+            .auth-content { gap: 12px; padding: 12px; }
+            .auth-logo-main { font-size: clamp(30px, 7vw, 72px); }
+            .auth-form { padding: 22px; }
+        }
 
-        .char-selection { background: rgba(27,27,27,0.9); padding: 30px; border-radius: 8px; width: 400px; color: #fff; position: relative; z-index: 5; }
-        .char-selection h2 { margin-top: 0; color: #00e676; }
+        .char-selection { 
+            background: linear-gradient(145deg, #38291c, #271a11);
+            background-image: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(0,0,0,0.15) 10px, rgba(0,0,0,0.15) 20px);
+            padding: 30px; 
+            border-radius: 4px;
+            border: 3px solid #61491f;
+            width: 400px; 
+            color: #f4d58d; 
+            position: relative; 
+            z-index: 5;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.1);
+            image-rendering: pixelated;
+        }
+        .char-selection h2 { margin-top: 0; color: #ffeaa7; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); }
         .char-selection-close {
             position: absolute;
             right: 12px;
@@ -433,11 +717,23 @@ header('Expires: 0');
             padding: 6px;
         }
         .char-slots { display: flex; flex-direction: column; gap: 10px; margin: 20px 0; }
-        .char-slot { background: #252525; padding: 15px; border-radius: 5px; border: 1px solid #444; cursor: pointer; transition: 0.2s; }
-        .char-slot:hover { border-color: #00e676; background: #2a2a2a; }
-        .char-slot.empty { color: #888; }
-        .char-slot-name { font-weight: bold; color: #00e676; }
-        .char-slot-class { font-size: 12px; color: #bbb; }
+        .char-slot { 
+            background: linear-gradient(135deg, #352316 0%, #281b0f 100%);
+            padding: 15px; 
+            border-radius: 3px;
+            border: 2px solid #5c4a35;
+            cursor: pointer; 
+            transition: 0.2s;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.3);
+        }
+        .char-slot:hover { 
+            border-color: #8b7355;
+            background: linear-gradient(135deg, #4a3a2a 0%, #3d2f22 100%);
+            transform: translateY(-2px);
+        }
+        .char-slot.empty { color: #8b7355; }
+        .char-slot-name { font-weight: bold; color: #ffeaa7; text-shadow: 1px 1px 2px rgba(0,0,0,0.8); }
+        .char-slot-class { font-size: 12px; color: #c9a875; }
         
         /* --- TOAST NOTIFICATIONS --- */
         #toast-container {
@@ -446,12 +742,22 @@ header('Expires: 0');
             pointer-events: none;
         }
         .toast {
-            background: rgba(20, 20, 20, 0.95); border: 1px solid #333; border-left: 4px solid #00e676;
-            color: #fff; padding: 12px 24px; border-radius: 4px; min-width: 250px; text-align: center;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.5); font-size: 14px;
-            animation: slideUp 0.3s ease-out forwards; pointer-events: auto;
+            background: linear-gradient(135deg, #352316 0%, #281b0f 100%);
+            border: 2px solid #61491f;
+            border-left: 4px solid #d4af37;
+            color: #ffeaa7; 
+            padding: 12px 24px; 
+            border-radius: 3px;
+            min-width: 250px; 
+            text-align: center;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.1);
+            font-size: 14px;
+            animation: slideUp 0.3s ease-out forwards; 
+            pointer-events: auto;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+            image-rendering: pixelated;
         }
-        .toast.error { border-left-color: #f44336; }
+        .toast.error { border-left-color: #c62828; color: #ffb3b3; }
         .toast.big { font-size: 16px; padding: 20px 40px; border-left-width: 6px; font-weight: bold; }
         @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 
@@ -468,14 +774,107 @@ header('Expires: 0');
         #transition-overlay.active { opacity: 1; }
 
         /* --- SMALL MODAL (INPUT) --- */
-        .small-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 10150; display: none; align-items: center; justify-content: center; }
-        .small-modal-content { background: #1e1e1e; padding: 25px; border-radius: 8px; border: 1px solid #333; width: 300px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
-        .small-modal input { width: 100%; padding: 10px; margin: 15px 0; background: #252525; border: 1px solid #444; color: white; border-radius: 4px; box-sizing: border-box; }
+        .small-modal { 
+            position: fixed; 
+            top: 0; left: 0; 
+            width: 100%; height: 100%; 
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(3px);
+            z-index: 10150; 
+            display: none; 
+            align-items: center; 
+            justify-content: center;
+        }
+        .small-modal-content { 
+            background: linear-gradient(145deg, #38291c, #271a11);
+            background-image: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(0,0,0,0.15) 10px, rgba(0,0,0,0.15) 20px);
+            padding: 25px;
+            border-radius: 4px;
+            border: 3px solid #61491f;
+            width: 300px; 
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.1);
+            image-rendering: pixelated;
+            color: #f4d58d;
+        }
+        .small-modal-content h3 {
+            color: #ffeaa7;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+        }
+        .small-modal input { 
+            width: 100%; 
+            padding: 10px; 
+            margin: 15px 0;
+            background: linear-gradient(135deg, rgba(20,15,10,0.98), rgba(30,20,15,1));
+            border: 2px solid #5c4a35;
+            color: #f4d58d;
+            border-radius: 3px;
+            box-sizing: border-box;
+            text-shadow: 1px 1px 1px rgba(0,0,0,0.5);
+        }
+        .small-modal input::placeholder {
+            color: #8b7355;
+        }
+        .small-modal input:focus {
+            outline: none;
+            border-color: #8b7355;
+            box-shadow: 0 0 0 2px rgba(139,115,85,0.3);
+        }
 
         /* --- LOADING SCREEN --- */
         #loading-screen { z-index: 9999; background: #000; }
-        .loading-bar-bg { width: 300px; height: 24px; background: #222; border: 2px solid #444; border-radius: 12px; overflow: hidden; margin-top: 20px; position: relative; box-shadow: 0 0 15px rgba(0,0,0,0.5); }
-        .loading-bar-fill { height: 100%; background: #2196f3; width: 0%; transition: width 0.2s linear; box-shadow: 0 0 10px #2196f3; }
+        .loading-bar-bg { 
+            width: 300px; 
+            height: 24px; 
+            background: linear-gradient(135deg, #2d1f12, #3a2a1a);\n            border: 3px solid #5c4a35;\n            border-radius: 3px;\n            overflow: hidden; 
+            margin-top: 20px; 
+            position: relative; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.7), inset 0 2px 4px rgba(0,0,0,0.5);\n            image-rendering: pixelated;
+        }
+        .loading-bar-fill { 
+            height: 100%; 
+            background: linear-gradient(180deg, #d4af37, #b8941f);\n            width: 0%; 
+            transition: width 0.2s linear; 
+            box-shadow: 0 0 10px rgba(212,175,55,0.6);\n        }
+        
+        /* --- RANGE INPUTS (SLIDERS) --- */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            height: 8px;
+            background: linear-gradient(135deg, #2d1f12, #3a2a1a);
+            border: 2px solid #5c4a35;
+            border-radius: 2px;
+            outline: none;
+            cursor: pointer;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            background: linear-gradient(135deg, #8b7355, #6b5845);
+            border: 2px solid #5c4a35;
+            border-radius: 2px;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            background: linear-gradient(135deg, #8b7355, #6b5845);
+            border: 2px solid #5c4a35;
+            border-radius: 2px;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+        input[type="range"]::-webkit-slider-thumb:hover {
+            background: linear-gradient(135deg, #9b8365, #7b6855);
+        }
+        input[type="range"]::-moz-range-thumb:hover {
+            background: linear-gradient(135deg, #9b8365, #7b6855);
+        }
 
         /* --- RESPAWN EFFECT --- */
         @keyframes respawnAnim {
@@ -499,9 +898,70 @@ header('Expires: 0');
             position: absolute; top: 10px; left: 10px; z-index: 1600;
             display: flex; flex-direction: column; align-items: flex-start; gap: 5px;
         }
-        .top-left-ui .world-text { color: #aaa; font-size: 12px; }
-        .top-left-ui #world-info { color: white; font-weight: bold; font-size: 14px; }
-        .top-left-ui .online-btn { padding: 5px 10px; font-size: 12px; background: rgba(0,0,0,0.6); border: 1px solid #444; margin:0; min-width:120px; display:flex; justify-content:space-between; }
+        .top-left-ui .world-text { color: #c9a875; font-size: 12px; text-shadow: 1px 1px 2px rgba(0,0,0,0.9); }
+        .top-left-ui #world-info { color: #ffeaa7; font-weight: bold; font-size: 14px; text-shadow: 1px 1px 3px rgba(0,0,0,0.9); }
+        .top-left-ui .online-btn { 
+            padding: 5px 10px; 
+            font-size: 12px; 
+            background: linear-gradient(135deg, rgba(58,42,26,0.9), rgba(45,31,18,0.95));
+            border: 2px solid #61491f;
+            border-radius: 2px;
+            margin:0; 
+            min-width:120px; 
+            display:flex; 
+            justify-content:space-between;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.6);
+            color: #f4d58d;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+        }
+        
+        /* Online List Dropdown */
+        #online-list-dropdown {
+            background: linear-gradient(135deg, rgba(58,42,26,0.95), rgba(45,31,18,0.98));
+            border: 2px solid #61491f;
+            border-radius: 3px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.7);
+            color: #f4d58d;
+            padding: 8px;
+        }
+        #online-list-dropdown .online-player-item {
+            padding: 6px 8px;
+            border-bottom: 1px solid rgba(92,74,53,0.5);
+            cursor: pointer;
+            transition: all 0.2s;
+            text-shadow: 1px 1px 1px rgba(0,0,0,0.8);
+        }
+        #online-list-dropdown .online-player-item:hover {
+            background: rgba(139,115,85,0.3);
+            color: #ffeaa7;
+        }
+        #online-list-dropdown .online-player-item:last-child {
+            border-bottom: none;
+        }
+        
+        /* Shop Button */
+        #shop-btn {
+            padding: 10px 20px;
+            background: linear-gradient(180deg, #d4af37 0%, #b8941f 50%, #9c7f18 100%);
+            color: #1a1410;
+            border: 2px solid #c5a028;
+            border-radius: 2px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 3px 0 #7a6012, 0 5px 10px rgba(212,175,55,0.4);
+            text-shadow: 1px 1px 1px rgba(255,255,255,0.3);
+            transition: all 0.1s;
+            image-rendering: pixelated;
+        }
+        #shop-btn:hover {
+            background: linear-gradient(180deg, #e4bf47 0%, #c8a42f 50%, #ac8f28 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 0 #7a6012, 0 6px 12px rgba(212,175,55,0.5);
+        }
+        #shop-btn:active {
+            transform: translateY(2px);
+            box-shadow: 0 1px 0 #7a6012, 0 2px 4px rgba(212,175,55,0.3);
+        }
 
         /* --- RESPONSIVE / MOBILE --- */
         @media (max-width: 1366px) {
@@ -893,45 +1353,50 @@ header('Expires: 0');
     <div class="auth-bg-layer layer-2"></div>
     <div class="auth-bg-layer layer-3"></div>
     <div class="auth-bg-layer layer-4"></div>
-    <div class="auth-form">
-        <h2 id="auth-title">Login</h2>
-        <div id="login-form">
-            <input type="text" id="login-username" placeholder="Username">
-            <input type="password" id="login-password" placeholder="Password">
-            <label style="display:flex; align-items:center; gap:8px; margin:10px 0; color:#bbb; font-size:12px;">
-                <input type="checkbox" id="remember-me" style="width:16px; height:16px; cursor:pointer;">
-                Remember me for 7 days
-            </label>
-            <button onclick="handleLogin()">Login</button>
-            <div class="toggle-link">New account? <a onclick="toggleAuthForm()">Register</a></div>
+    <div class="auth-content">
+        <div class="auth-logo" aria-label="HexRealms">
+            <span class="auth-logo-main">HexRealms</span>
         </div>
-        <div id="register-form" style="display:none;">
-            <input type="text" id="register-username" placeholder="Username">
-            <input type="password" id="register-password" placeholder="Password">
-            <input type="password" id="register-password2" placeholder="Confirm password">
-            <button onclick="handleRegister()">Register</button>
-            <div class="toggle-link">Already have an account? <a onclick="toggleAuthForm()">Login</a></div>
+        <div class="auth-form">
+            <h2 id="auth-title">Login</h2>
+            <div id="login-form">
+                <input type="text" id="login-username" placeholder="Username">
+                <input type="password" id="login-password" placeholder="Password">
+                <label style="display:flex; align-items:center; gap:8px; margin:10px 0; color:#c9a875; font-size:12px;">
+                    <input type="checkbox" id="remember-me" style="width:16px; height:16px; cursor:pointer;">
+                    Remember me for 7 days
+                </label>
+                <button onclick="handleLogin()">Login</button>
+                <div class="toggle-link">New account? <a onclick="toggleAuthForm()">Register</a></div>
+            </div>
+            <div id="register-form" style="display:none;">
+                <input type="text" id="register-username" placeholder="Username">
+                <input type="password" id="register-password" placeholder="Password">
+                <input type="password" id="register-password2" placeholder="Confirm password">
+                <button onclick="handleRegister()">Register</button>
+                <div class="toggle-link">Already have an account? <a onclick="toggleAuthForm()">Login</a></div>
+            </div>
         </div>
     </div>
 </div>
 
 <div id="create-char-modal" class="small-modal">
     <div class="small-modal-content">
-        <h3 style="margin-top:0; color:#00e676;">Create Character</h3>
+        <h3 style="margin-top:0;">Create Character</h3>
         <input type="text" id="new-char-name" placeholder="Character Name" maxlength="15">
         <div style="display:flex; gap:10px; justify-content:center;">
-            <button class="combat-btn" style="background:#444; font-size:12px;" onclick="closeCreateCharacter()">Cancel</button>
-            <button class="combat-btn" style="background:#00e676; color:black; font-size:12px;" onclick="submitNewCharacter()">Create</button>
+            <button class="combat-btn" style="font-size:12px; filter: brightness(0.7);" onclick="closeCreateCharacter()">Cancel</button>
+            <button class="combat-btn" style="font-size:12px;" onclick="submitNewCharacter()">Create</button>
         </div>
     </div>
 </div>
 
 <div id="mobile-disclaimer-modal" class="small-modal">
     <div class="small-modal-content" style="width:320px;">
-        <h3 style="margin-top:0; color:#ffd700;">📱 Best Experience</h3>
-        <p style="margin:15px 0; font-size:14px; color:#e0e0e0;">For best experience, please switch to <strong>Portrait Mode</strong> 📲</p>
-        <p style="margin:15px 0; font-size:12px; color:#888;">Flip your phone and rotate to portrait for optimal gameplay.</p>
-        <button class="combat-btn" style="background:#00e676; color:black; width:100%; margin-top:10px;" onclick="document.getElementById('mobile-disclaimer-modal').style.display='none'">Got it!</button>
+        <h3 style="margin-top:0;">📱 Best Experience</h3>
+        <p style="margin:15px 0; font-size:14px;">For best experience, please switch to <strong>Portrait Mode</strong> 📲</p>
+        <p style="margin:15px 0; font-size:12px; color:#8b7355;">Flip your phone and rotate to portrait for optimal gameplay.</p>
+        <button class="combat-btn" style="width:100%; margin-top:10px;" onclick="document.getElementById('mobile-disclaimer-modal').style.display='none'">Got it!</button>
     </div>
 </div>
 
@@ -947,59 +1412,59 @@ header('Expires: 0');
 </div>
 
 <div id="settings-modal" class="modal">
-    <div class="modal-panel" style="background:#1b1b1b; padding:30px; border-radius:8px; width:300px; text-align:center; position:relative;">
+    <div class="modal-panel" style="padding:30px; width:300px; text-align:center; position:relative;">
         <button class="icon-btn" style="position:absolute; top:10px; right:10px;" onclick="toggleSettings()">
             <img src="assets/ui/ex.png" alt="Close">
         </button>
         
-        <h2 style="color:#00e676; margin-top:0;">Settings</h2>
+        <h2 style="margin-top:0;">Settings</h2>
         
-        <div style="margin:20px 0; background:#252525; padding:15px; border-radius:5px;">
+        <div style="margin:20px 0; background:linear-gradient(135deg, rgba(20,15,10,0.98), rgba(30,20,15,1.0)); padding:15px; border-radius:4px; border:2px solid #5c4a35;">
             <div style="display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom:10px;">
                 <img src="assets/ui/music.png" style="width:24px; height:24px;">
-                <span style="color:#ccc;">Music</span>
+                <span style="color:#c9a875;">Music</span>
             </div>
             <div style="display:flex; align-items:center; justify-content:center; gap:15px;">
                 <button class="icon-btn" onclick="playMusic()"><img src="assets/ui/play.png" alt="Play"></button>
                 <button class="icon-btn" onclick="stopMusic()"><img src="assets/ui/ex.png" alt="Stop"></button>
             </div>
             <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:10px;">
-                <span style="color:#888; font-size:12px;">Volume</span>
-                <span id="music-volume-value" style="color:#bbb; font-size:12px;">15%</span>
+                <span style="color:#8b7355; font-size:12px;">Volume</span>
+                <span id="music-volume-value" style="color:#c9a875; font-size:12px;">15%</span>
             </div>
             <input id="music-volume" type="range" min="0" max="1" step="0.01" value="0.15" oninput="setVolume(this.value)" style="width:100%;">
 
-            <label style="display:flex; align-items:center; gap:8px; margin-top:10px; color:#bbb; font-size:12px; justify-content:center;">
+            <label style="display:flex; align-items:center; gap:8px; margin-top:10px; color:#c9a875; font-size:12px; justify-content:center;">
                 <input type="checkbox" id="music-loop-toggle" onchange="setMusicLoop(this.checked)">
                 Loop current track
             </label>
 
             <div style="margin-top:10px; text-align:left;">
-                <div style="color:#888; font-size:12px; margin-bottom:6px;">Now playing: <span id="music-now-playing" style="color:#e0e0e0;">-</span></div>
-                <select id="music-track-select" onchange="setMusicTrack(this.value)" style="width:100%; padding:6px; background:#1b1b1b; border:1px solid #444; color:#e0e0e0; border-radius:4px; font-family: inherit;"></select>
+                <div style="color:#8b7355; font-size:12px; margin-bottom:6px;">Now playing: <span id="music-now-playing" style="color:#f4d58d;">-</span></div>
+                <select id="music-track-select" onchange="setMusicTrack(this.value)" style="width:100%; padding:6px; background:rgba(20,15,10,0.9); border:2px solid #5c4a35; color:#f4d58d; border-radius:3px; font-family: inherit;"></select>
             </div>
             
             <div style="display:flex; align-items:center; justify-content:center; gap:10px; margin-top:15px; margin-bottom:5px;">
-                <span style="color:#ccc;">Sounds</span>
+                <span style="color:#c9a875;">Sounds</span>
             </div>
             <input type="range" min="0" max="1" step="0.05" value="0.3" oninput="setSfxVolume(this.value)" style="width:100%;">
         </div>
 
-        <button class="combat-btn" style="width:100%; background:#2196f3; margin:5px 0;" onclick="changeCharacter()">Change Character</button>
-        <button class="combat-btn" style="width:100%; background:#d32f2f; margin:5px 0;" onclick="handleLogout()">Logout</button>
+        <button class="combat-btn" style="width:100%; margin:5px 0; filter: hue-rotate(180deg);" onclick="changeCharacter()">Change Character</button>
+        <button class="combat-btn" style="width:100%; margin:5px 0; filter: hue-rotate(350deg) brightness(1.1);" onclick="handleLogout()">Logout</button>
     </div>
 </div>
 
 <div id="guilds-modal" class="modal">
-    <div class="modal-panel" style="background:#1e1e1e; width:500px; max-height:600px; border:1px solid #444; border-radius:8px; display:flex; flex-direction:column;">
-        <div style="padding:15px; border-bottom:1px solid #333; display:flex; justify-content:space-between; align-items:center;">
-            <h2 style="margin:0; color:#e0e0e0;">Guilds</h2>
+    <div class="modal-panel" style="width:500px; max-height:600px; display:flex; flex-direction:column;">
+        <div style="padding:15px; border-bottom:2px solid #61491f; display:flex; justify-content:space-between; align-items:center;">
+            <h2 style="margin:0;">Guilds</h2>
             <button class="icon-btn" onclick="document.getElementById('guilds-modal').style.display='none'"><img src="assets/ui/ex.png" alt="Close"></button>
         </div>
-        <div style="padding:10px 15px; background:#0a0a0a; border-bottom:1px solid #333;">
-            <div style="font-size:13px; color:#888;">Your Reputation: <span id="guild-reputation-val" style="color:#ffd700;">0</span></div>
+        <div style="padding:10px 15px; background:linear-gradient(135deg, rgba(20,15,10,0.98), rgba(30,20,15,1.0)); border-bottom:2px solid #5c4a35;">
+            <div style="font-size:13px; color:#c9a875;">Your Reputation: <span id="guild-reputation-val" style="color:#d4af37;">0</span></div>
         </div>
-        <div id="guilds-content" style="flex:1; padding:15px; overflow-y:auto; color:#ccc;">Loading...</div>
+        <div id="guilds-content" style="flex:1; padding:15px; overflow-y:auto; color:#f4d58d;">Loading...</div>
     </div>
 </div>
 
@@ -1008,7 +1473,7 @@ header('Expires: 0');
     <div class="start-bg-layer layer-2"></div>
     <div class="start-bg-layer layer-3"></div>
     <div class="start-bg-layer layer-4"></div>
-    <h1>RPG WORLD</h1>
+    <h1 style="color:#ffeaa7; text-shadow: 3px 3px 6px rgba(0,0,0,0.9), 0 0 20px rgba(212,175,55,0.4);">HexRealms</h1>
     <button class="combat-btn" onclick="showAuthModal()">LOGIN</button>
 </div>
 
@@ -1023,24 +1488,24 @@ header('Expires: 0');
             </div>
             <div style="position:relative;">
                 <button class="combat-btn online-btn" onclick="togglePlayerList()">
-                    <span><span style="color:#00e676;">●</span> <span id="online-count-val" style="color:white;">1</span> Online</span> <span>▼</span>
+                    <span><span style="color:#d4af37;">●</span> <span id="online-count-val" style="color:#ffeaa7;">1</span> Online</span> <span>▼</span>
                 </button>
-                <div id="online-list-dropdown" style="display:none; position:absolute; top:100%; left:0; width: 200px; max-height: 300px; overflow-y: auto; background: rgba(20, 20, 20, 0.95); border: 1px solid #444; border-radius: 4px; margin-top: 5px; padding: 5px;">
+                <div id="online-list-dropdown" style="display:none; position:absolute; top:100%; left:0; width: 200px; max-height: 300px; overflow-y: auto; margin-top: 5px; padding: 5px;">
                     <!-- List items injected by JS -->
                 </div>
             </div>
         </div>
 
         <button id="world-btn" style="display:none;" onclick="showWorldSelection()">Select World 🌐</button>
-        <button id="shop-btn" style="display:none; position:absolute; bottom:20px; left:50%; transform:translateX(-50%); padding:10px 20px; background:gold; color:black; border:none; font-weight:bold; cursor:pointer; border-radius:5px; z-index:1600; box-shadow:0 0 10px #000;" onclick="openCityMenu()">🏰 Enter Market</button>
-        <button id="expand-panel-btn" style="display:none; position:absolute; top:55px; right:10px; z-index:1600; background:rgba(0,0,0,0.6); color:white; border:1px solid #444; padding:8px 12px; cursor:pointer; font-weight:bold; border-radius:4px;" onclick="toggleRightPanel()" title="Show Panel (Tab)">«</button>
+        <button id="shop-btn" style="display:none; position:absolute; bottom:20px; left:50%; transform:translateX(-50%); z-index:1600;" onclick="openCityMenu()">🏰 Enter Market</button>
+        <button id="expand-panel-btn" style="display:none; position:absolute; top:55px; right:10px; z-index:1600; background:linear-gradient(135deg, rgba(58,42,26,0.9), rgba(45,31,18,0.95)); color:#f4d58d; border:2px solid #61491f; padding:8px 12px; cursor:pointer; font-weight:bold; border-radius:2px; box-shadow: 0 2px 6px rgba(0,0,0,0.6); text-shadow: 1px 1px 2px rgba(0,0,0,0.8);" onclick="toggleRightPanel()" title="Show Panel (Tab)">«</button>
 
         <div id="map"></div>
     </div>
 
     <div id="right-panel">
-        <div style="padding:15px; border-bottom:1px solid #333; display:flex; justify-content:space-between; align-items:center;">
-            <button class="icon-btn" onclick="toggleRightPanel()" title="Hide Panel (Tab)" style="font-weight:bold; color:#888; font-size:18px;">»</button>
+        <div style="padding:15px; border-bottom:2px solid #61491f; background:linear-gradient(180deg, #3d2f1f 0%, #2a1e14 100%); display:flex; justify-content:space-between; align-items:center;">
+            <button class="icon-btn" onclick="toggleRightPanel()" title="Hide Panel (Tab)" style="font-weight:bold; color:#c9a875; font-size:18px;">»</button>
             <div style="display:flex; gap:10px;">
                 <button class="icon-btn" onclick="toggleSettings()">
                     <img src="assets/ui/cogwheel.png" alt="Settings">
@@ -1056,31 +1521,31 @@ header('Expires: 0');
         </div>
 
         <div id="tab-stats" class="tab-content active">
-            <h2 id="class-name" style="margin:0;">Character</h2>
-            <div style="font-size:12px; color:#888; margin-bottom:20px;">Level <span id="lvl">1</span> - <span id="char-class" style="color:#aaa;">Unknown</span></div>
-            <div>Health: <span id="hp">100 / 100</span></div>
+            <h2 id="class-name" style="margin:0; color:#ffeaa7;">Character</h2>
+            <div style="font-size:12px; color:#8b7355; margin-bottom:20px;">Level <span id="lvl">1</span> - <span id="char-class" style="color:#c9a875;">Unknown</span></div>
+            <div style="color:#f4d58d;">Health: <span id="hp">100 / 100</span></div>
             <div class="big-bar-widget">
                 <div class="hb-fill-wrapper"><div class="hb-fill" id="hp-fill" style="width:100%"></div></div>
                 <div class="hb-left"></div>
                 <div class="hb-middle"></div>
                 <div class="hb-right"></div>
             </div>
-            <div style="margin-top:15px;">Energy: <span id="energy">10 / 10</span></div>
+            <div style="margin-top:15px; color:#f4d58d;">Energy: <span id="energy">10 / 10</span></div>
             <div class="big-bar-widget">
                 <div class="hb-fill-wrapper"><div class="hb-fill energy" id="en-fill" style="width:100%"></div></div>
                 <div class="hb-left"></div>
                 <div class="hb-middle"></div>
                 <div class="hb-right"></div>
             </div>
-            <div style="text-align:right; font-size:11px; color:#666;">Steps: <span id="steps-info">0/10</span></div>
-            <div style="margin-top:15px;">XP: <span id="xp-text">0 / 100</span></div>
+            <div style="text-align:right; font-size:11px; color:#5c4a35;">Steps: <span id="steps-info">0/10</span></div>
+            <div style="margin-top:15px; color:#f4d58d;">XP: <span id="xp-text">0 / 100</span></div>
             <div class="big-bar-widget">
                 <div class="hb-fill-wrapper"><div class="hb-fill xp" id="xp-fill" style="width:100%"></div></div>
                 <div class="hb-left"></div>
                 <div class="hb-middle"></div>
                 <div class="hb-right"></div>
             </div>
-            <div style="margin-top:15px;">Coins: <span id="gold-val" style="color:gold; font-weight:bold;">0 copper coins</span></div>
+            <div style="margin-top:15px; color:#f4d58d;">Coins: <span id="gold-val" style="color:#d4af37; font-weight:bold;">0 copper coins</span></div>
         </div>
 
         <div id="tab-inventory" class="tab-content">
@@ -1149,7 +1614,7 @@ header('Expires: 0');
         <button class="combat-btn" style="background:#2196f3;" onclick="useItem(7)">🧪 Potion (2AP)</button>
         <button class="combat-btn" style="background:#ff9800;" onclick="useItem(8)">🩹 Bandage (2AP)</button>
     </div>
-    <p id="combat-log" style="color:#bbb; margin-top:15px; font-style:italic; height:20px;">Waiting...</p>
+    <p id="combat-log" style="color:#c9a875; margin-top:15px; font-style:italic; height:20px; text-shadow: 1px 1px 2px rgba(0,0,0,0.9);">Waiting...</p>
 </div>
 
 <div id="death-screen" class="modal">

@@ -4,6 +4,34 @@ header('Content-Type: application/json');
 ini_set('display_errors', '0');
 session_start();
 
+/**
+ * Safe datetime parser for cross-platform compatibility
+ * Handles various date formats including Linux YYYY-MM-DD variants
+ */
+function safeStrtotime($dateString) {
+    // Try standard strtotime first
+    $result = strtotime($dateString);
+    if ($result !== false) {
+        return $result;
+    }
+    
+    // Fallback: parse as YYYY-MM-DD HH:MM:SS manually
+    if (preg_match('/^(\d{4})-(\d{2})-(\d{2})(?:\s+(\d{2}):(\d{2}):(\d{2}))?/', $dateString, $matches)) {
+        $year = (int)$matches[1];
+        $month = (int)$matches[2];
+        $day = (int)$matches[3];
+        $hour = isset($matches[4]) ? (int)$matches[4] : 0;
+        $minute = isset($matches[5]) ? (int)$matches[5] : 0;
+        $second = isset($matches[6]) ? (int)$matches[6] : 0;
+        
+        // mktime(hour, minute, second, month, day, year)
+        return mktime($hour, $minute, $second, $month, $day, $year);
+    }
+    
+    // If all else fails, return current time
+    return time();
+}
+
 $input = json_decode(file_get_contents('php://input'), true);
 $action = $input['action'] ?? '';  // <-- ADD THIS LINE
 
@@ -843,7 +871,7 @@ if ($action === 'get_duel_state') {
     }
 
     // 2. Check Turn Timer (30s limit)
-    $turnStart = strtotime($duel['turn_start_time']);
+    $turnStart = safeStrtotime($duel['turn_start_time']);
     $elapsed = time() - $turnStart;
     if ($elapsed > 30) {
         // Force Switch Turn
@@ -1764,6 +1792,54 @@ if ($action === 'join_guild') {
     $stmt->execute([$guildId, $charId]);
     
     echo json_encode(['status' => 'success', 'message' => "Joined {$guild['name']}!"]); exit;
+}
+
+// --- DAILY CHALLENGES ---
+
+function generateRandomDailyChallenge($pdo, $charId) {
+    $today = date('Y-m-d');
+    
+    $stmt = $pdo->prepare("SELECT * FROM daily_challenges WHERE character_id = ? AND created_date = ?");
+    $stmt->execute([$charId, $today]);
+    $existing = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if ($existing) {
+        return $existing;
+    }
+    
+    $types = [
+        ['type' => 'kill_enemies', 'targets' => [5, 10, 15], 'gold' => [100, 150, 200], 'xp' => [50, 75, 100]],
+        ['type' => 'collect_items', 'targets' => [3, 5, 8], 'gold' => [80, 120, 180], 'xp' => [40, 60, 90]],
+        ['type' => 'visit_cities', 'targets' => [2, 3, 4], 'gold' => [120, 180, 250], 'xp' => [60, 90, 120]],
+        ['type' => 'complete_quests', 'targets' => [1, 2, 3], 'gold' => [150, 250, 400], 'xp' => [75, 125, 200]],
+        ['type' => 'travel_tiles', 'targets' => [20, 40, 60], 'gold' => [100, 150, 200], 'xp' => [50, 75, 100]],
+    ];
+    
+    $challenge = $types[array_rand($types)];
+    $difficulty = random_int(0, 2);
+    
+    $descriptions = [
+        'kill_enemies' => "Defeat {target} enemies",
+        'collect_items' => "Collect {target} items",
+        'visit_cities' => "Visit {target} different cities",
+        'complete_quests' => "Complete {target} quests",
+        'travel_tiles' => "Travel {target} tiles",
+    ];
+    
+    $targetCount = $challenge['targets'][$difficulty];
+    $description = str_replace('{target}', $targetCount, $descriptions[$challenge['type']]);
+    
+    $stmt = $pdo->prepare("INSERT INTO daily_challenges (character_id, challenge_type, description, target_count, reward_gold, reward_xp, created_date) VALUES (?, ?, ?, ?, ?, ?, ?)");
+    $stmt->execute([$charId, $challenge['type'], $description, $targetCount, $challenge['gold'][$difficulty], $challenge['xp'][$difficulty], $today]);
+    
+    $stmt = $pdo->prepare("SELECT * FROM daily_challenges WHERE character_id = ? AND created_date = ?");
+    $stmt->execute([$charId, $today]);
+    return $stmt->fetch(PDO::FETCH_ASSOC);
+}
+
+if ($action === 'get_daily_challenge') {
+    // TODO: Implement daily challenges if needed
+    echo json_encode(['status' => 'error', 'message' => 'Not implemented']); exit;
 }
 
 ?>

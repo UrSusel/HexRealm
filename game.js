@@ -56,8 +56,11 @@ const playlist = [
     "assets/We're Bird People Now.ogg"
 ];
 let explorationAudio = new Audio();
+explorationAudio.crossOrigin = 'anonymous';
 let combatAudio = new Audio(AUDIO_PATHS.combatMusic);
+combatAudio.crossOrigin = 'anonymous';
 let waitingAudio = new Audio('img/Waiting.ogg');
+waitingAudio.crossOrigin = 'anonymous';
 combatAudio.loop = true;
 waitingAudio.loop = true;
 let isPlaying = false;
@@ -109,7 +112,7 @@ function startGame() {
     applyResponsiveStyles();
     stopWaitingMusic();
     playRandomTrack();
-    isPlaying = true;
+    isPlaying = false;
     
     // Inject Gold Display if missing
     if (!document.getElementById('gold-display')) {
@@ -254,6 +257,9 @@ async function initGame() {
             }
             renderInventory(json.data.inventory);
             checkLifeStatus();
+            
+            // Load daily quest
+            setTimeout(() => { loadDailyQuest(); }, 500);
         } else if (json.code === 'world_missing' || json.allow_world_change) {
             allowWorldBypass = true;
             showToast(json.message || 'World missing. Choose another world.', 'error big', 8000);
@@ -366,7 +372,19 @@ async function apiPost(action, body = {}) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(Object.assign({ action }, body))
         });
-        return await res.json();
+        const text = await res.text();
+        if (!text) {
+            console.error('Empty response from server');
+            return { status: 'error', message: 'Empty response from server' };
+        }
+        try {
+            return JSON.parse(text);
+        } catch (parseError) {
+            console.error('JSON Parse Error for action:', action);
+            console.error('Response text:', text.substring(0, 500));
+            console.error('Response status:', res.status);
+            return { status: 'error', message: 'Invalid JSON response' };
+        }
     } catch (e) {
         console.error('apiPost error', e);
         return { status: 'error', message: 'Network error' };
@@ -426,6 +444,13 @@ async function loadAndDrawMap() {
 function renderMapTiles(tiles) {
     const mapDiv = document.getElementById('map');
     if (!mapDiv) return;
+
+    if (mapDiv.dataset.musicUnlock !== '1') {
+        mapDiv.dataset.musicUnlock = '1';
+        mapDiv.addEventListener('pointerdown', () => {
+            if (!isPlaying && !inCombatMode) playMusic();
+        });
+    }
 
     // Remove old tiles but keep player marker
     mapDiv.querySelectorAll('.tile').forEach(e => e.remove());
@@ -1294,14 +1319,13 @@ function toggleSettings() {
 function playMusic() {
     if (isPlaying) return;
     if (inCombatMode) {
-        combatAudio.play();
+        combatAudio.play().catch(() => {});
     } else {
         if (!explorationAudio.src) {
             if (currentTrackIndex >= 0) setMusicTrack(currentTrackIndex);
             else playRandomTrack();
-        } else {
-            explorationAudio.play();
         }
+        explorationAudio.play().catch(() => {});
     }
     isPlaying = true;
 }
@@ -1364,7 +1388,7 @@ function setMusicTrack(value) {
     explorationAudio.src = playlist[currentTrackIndex];
     explorationAudio.loop = loopCurrentTrack;
     updateNowPlaying();
-    if (!inCombatMode) explorationAudio.play().catch(e => console.log("Autoplay blocked:", e));
+    // Don't autoplay - require user interaction
 }
 function playRandomTrack() {
     if (!playlist.length) return;
@@ -1374,7 +1398,7 @@ function playRandomTrack() {
     explorationAudio.src = playlist[currentTrackIndex];
     explorationAudio.loop = loopCurrentTrack;
     updateNowPlaying();
-    explorationAudio.play().catch(e => console.log("Autoplay blocked:", e));
+    // Don't autoplay - require user interaction
     syncMusicSettingsUI();
 }
 function handleTrackEnded() {
@@ -1477,32 +1501,6 @@ async function handleLogout() {
     stopMusic();
     await apiPost('logout_account');
     location.reload();
-    return;
-    
-    // Reset UI
-    document.getElementById('logout-btn').style.display = 'none';
-    document.getElementById('settings-modal').style.display = 'none';
-    document.getElementById('game-layout').style.display = 'none';
-    document.getElementById('start-screen').style.display = 'flex';
-    
-    // Reset Game State
-    gameState = {
-        x: 0, y: 0, hp: 100, max_hp: 100, energy: 10, max_energy: 10,
-        xp: 0, max_xp: 100, steps_buffer: 0, enemy_hp: 0, enemy_max_hp: 100,
-        in_combat: false, tutorial_completed: false, is_pvp: false,
-        gold: 0, stat_points: 0, base_attack: 1, base_defense: 0,
-        attack: 1, defense: 0
-    };
-    combatState = null;
-    inCombatMode = false;
-    isProcessingTurn = false;
-    
-    // Clear map
-    const mapDiv = document.getElementById('map');
-    if (mapDiv) mapDiv.innerHTML = '';
-    playerMarker = document.createElement('div'); playerMarker.classList.add('player');
-    
-    showAuthModal();
 }
 
 async function changeCharacter() {
@@ -2753,6 +2751,71 @@ async function acceptQuest(questId) {
         showToast(res.message || 'Failed to accept quest', 'error');
     }
 }
+
+// --- DAILY QUEST SYSTEM ---
+
+window.currentDailyQuest = null;
+
+async function loadDailyQuest() {
+    const res = await apiPost('init_daily_quest', {});
+    if (res.status === 'success') {
+        window.currentDailyQuest = res.daily_quest;
+        displayDailyQuest(res.daily_quest);
+    } else {
+        console.error('Failed to load daily quest:', res.message);
+    }
+}
+
+function displayDailyQuest(quest) {
+    const container = document.getElementById('daily-quest-container');
+    const display = document.getElementById('daily-quest-display');
+    const btn = document.getElementById('daily-quest-btn');
+    
+    if (!container || !display) return;
+    
+    container.style.display = 'block';
+    
+    const itemsHtml = (quest.required_items || []).map(item => {
+        const itemName = questItemNames[item.id] || `Item #${item.id}`;
+        return `${item.quantity}x ${itemName}`;
+    }).join(', ');
+    
+    display.innerHTML = `
+        <div style="margin-bottom:5px;"><strong>${quest.title}</strong></div>
+        <div style="font-size:11px; color:#c9a875; margin-bottom:5px;">${quest.description}</div>
+        <div style="font-size:11px; border-top:1px solid rgba(212,175,55,0.3); padding-top:6px;">
+            Required: ${itemsHtml}<br>
+            Reward: <span style="color:#d4af37;">${quest.reward_gold} coins</span>, +${quest.reward_reputation} reputation
+        </div>
+    `;
+    
+    btn.textContent = 'Complete Daily Quest';
+    btn.disabled = false;
+}
+
+window.completeCurrentDaily = async function() {
+    if (!window.currentDailyQuest) {
+        showToast('No active daily quest.', 'error');
+        return;
+    }
+    
+    const res = await apiPost('complete_daily_quest', { quest_id: window.currentDailyQuest.id });
+    if (res.status === 'success') {
+        showToast(res.message + ` +${res.reward_gold} coins, +${res.reward_reputation} rep`, 'success');
+        const btn = document.getElementById('daily-quest-btn');
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = '✓ Completed!';
+        }
+        // Refresh character gold and other stats
+        const state = await apiPost('get_state');
+        if (state.status === 'success') {
+            updateUI(state.data);
+        }
+    } else {
+        showToast(res.message || 'Failed to complete daily quest', 'error');
+    }
+};
 
 async function loadActiveQuests() {
     const res = await apiPost('get_active_quests');

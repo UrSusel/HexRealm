@@ -389,6 +389,30 @@ header('Expires: 0');
             box-shadow: 0 1px 0 #3a1f0c, 0 2px 4px rgba(0,0,0,0.3);
         }
 
+        #settings-modal .combat-btn {
+            height: 32px;
+            padding: 0 12px;
+            font-size: 12px;
+            line-height: 32px;
+            margin: 4px 0 !important;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #settings-modal .settings-actions {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            margin: 0 10px;
+        }
+
+        #settings-modal .settings-actions .combat-btn {
+            width: 240px;
+            max-width: 100%;
+        }
+
         /* --- COMBAT LAYOUT (BASE) --- */
         #combat-screen {
             padding: 20px;
@@ -1450,8 +1474,11 @@ header('Expires: 0');
             <input type="range" min="0" max="1" step="0.05" value="0.3" oninput="setSfxVolume(this.value)" style="width:100%;">
         </div>
 
-        <button class="combat-btn" style="width:100%; margin:5px 0; filter: hue-rotate(180deg);" onclick="changeCharacter()">Change Character</button>
-        <button class="combat-btn" style="width:100%; margin:5px 0; filter: hue-rotate(350deg) brightness(1.1);" onclick="handleLogout()">Logout</button>
+        <div class="settings-actions">
+            <button class="combat-btn" style="width:100%; filter: hue-rotate(180deg);" onclick="changeCharacter()">Change Character</button>
+            <button class="combat-btn" style="width:100%; filter: hue-rotate(70deg);" onclick="location.href='credits.php'">Credits</button>
+            <button class="combat-btn" style="width:100%; filter: hue-rotate(350deg) brightness(1.1);" onclick="handleLogout()">Logout</button>
+        </div>
     </div>
 </div>
 
@@ -1564,6 +1591,14 @@ header('Expires: 0');
         </div>
 
         <div id="tab-quests" class="tab-content">
+            <div id="daily-quest-container" style="margin-bottom:15px; padding:12px; background:linear-gradient(135deg, rgba(212,175,55,0.15), rgba(255,234,167,0.1)); border:2px solid #d4af37; border-radius:3px; display:none;">
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                    <span style="font-size:18px;">⭐</span>
+                    <span style="color:#ffd700; font-weight:bold;">Daily Challenge</span>
+                </div>
+                <div id="daily-quest-display" style="font-size:12px; color:#f4d58d;"></div>
+                <button class="combat-btn" id="daily-quest-btn" style="width:100%; margin-top:8px; padding:6px; font-size:11px;" onclick="completeCurrentDaily()">Complete Daily Quest</button>
+            </div>
             <h3>Active Quests</h3>
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div style="font-size:13px; color:#888;">Reputation: <span id="reputation-val" style="color:#ffd700;">0</span></div>

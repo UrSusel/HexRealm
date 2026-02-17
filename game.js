@@ -728,7 +728,7 @@ function showItemMenu(item) {
             sellPrice = Math.max(1, Math.floor(item.price * 0.6)); // 60% for shop items
         }
         sellBtn.innerHTML = `💰 Sell (${formatCoins(sellPrice, true)})`;
-        sellBtn.style.cssText = 'padding:10px; background:#f39c12; color:white; border:none; border-radius:4px; cursor:pointer; font-size:16px;';
+        sellBtn.style.cssText = 'padding:10px; background:linear-gradient(180deg, #6b3a17, #3e240f); color:#f4d58d; border:2px solid #5c4a35; border-radius:4px; cursor:pointer; font-size:16px; text-shadow:1px 1px 1px rgba(0,0,0,0.7); box-shadow:0 2px 0 #2b1a0c;';
         sellBtn.onclick = () => { handleSellFromInventory(item); modal.style.display = 'none'; };
         buttons.appendChild(sellBtn);
     }
@@ -2395,7 +2395,7 @@ window.loadShop = async function(type, btn, classId) {
                         <div style="font-size:11px; color:#888;">${item.description || 'No description'}</div>
                     </div>
                 </div>
-                <button onclick="buyItem(${item.id}, ${item.price})" style="background:#4caf50; border:none; color:white; padding:5px 10px; cursor:pointer; border-radius:3px;">Buy (${formatCoins(item.price, true)})</button>
+                <button onclick="buyItem(${item.id}, ${item.price})" style="background:linear-gradient(180deg, #7a4b1e, #4b2f16); border:2px solid #5c4a35; color:#f4d58d; padding:6px 10px; cursor:pointer; border-radius:3px; text-shadow:1px 1px 1px rgba(0,0,0,0.6); box-shadow:0 2px 0 #2b1a0c;">Buy (${formatCoins(item.price, true)})</button>
             `;
             container.appendChild(row);
         });
@@ -2434,7 +2434,7 @@ window.loadSellTab = async function(btn) {
                         <div style="font-size:11px; color:#aaa;">${item.rarity}</div>
                     </div>
                 </div>
-                <button onclick="sellItem(${item.item_id})" style="background:#ff9800; border:none; color:black; padding:5px 10px; cursor:pointer; border-radius:3px;">Sell (${formatCoins(sellPrice, true)})</button>
+                <button onclick="sellItem(${item.item_id})" style="background:linear-gradient(180deg, #6b3a17, #3e240f); border:2px solid #5c4a35; color:#f4d58d; padding:6px 10px; cursor:pointer; border-radius:3px; text-shadow:1px 1px 1px rgba(0,0,0,0.7); box-shadow:0 2px 0 #2b1a0c;">Sell (${formatCoins(sellPrice, true)})</button>
             `;
             container.appendChild(row);
         });

@@ -257,7 +257,8 @@ async function initGame() {
             }
             renderInventory(json.data.inventory);
             checkLifeStatus();
-            
+            updatePlanetChangeButtonVisibility();
+
             // Load daily quest
             setTimeout(() => { loadDailyQuest(); }, 500);
         } else if (json.code === 'world_missing' || json.allow_world_change) {
@@ -275,8 +276,11 @@ async function checkTutorialStatus() {
         if (json.status === 'success') {
             const state = json.data ?? json.state ?? json;
             gameState.tutorial_completed = (state.tutorial_completed == 1 || state.tutorial_completed === true);
+            gameState.world_id = parseInt(state.world_id) || 2;
             const btn = document.getElementById('world-btn');
-            if (btn) btn.style.display = gameState.tutorial_completed ? 'inline-block' : 'none';
+            // Hide world button on planets Solaris (3) and Glaciem (5) since they have no world selection
+            const isOnPlanet = gameState.world_id === 3 || gameState.world_id === 5;
+            if (btn) btn.style.display = (gameState.tutorial_completed && !isOnPlanet) ? 'inline-block' : 'none';
         } else {
             console.warn('get_state failed', json);
         }
@@ -693,7 +697,7 @@ async function handleInventoryClick(item) {
         }
         return;
     }
-    
+
     // Equipment & Drops - show context menu
     if (item.type === 'weapon' || item.type === 'armor' || item.type === 'drop') {
         showItemMenu(item);
@@ -1227,6 +1231,8 @@ function updateLocalState(data) {
     // Luźne porównanie (==) bo PHP może zwrócić "1" lub 1
     gameState.tutorial_completed = (data.tutorial_completed == 1);
     gameState.gold = parseInt(data.gold || 0);
+    gameState.world_id = parseInt(data.world_id || 2);
+    if(data.level !== undefined) gameState.level = parseInt(data.level);
     if(data.stat_points !== undefined) gameState.stat_points = parseInt(data.stat_points);
     if(data.name) gameState.name = data.name;
     if(data.class_id) gameState.class_id = parseInt(data.class_id);
@@ -2954,6 +2960,82 @@ async function joinGuild(guildId) {
     }
 }
 
+// --- PLANET CHANGE SYSTEM ---
+function updatePlanetChangeButtonVisibility() {
+    const btn = document.getElementById('planet-change-btn');
+    if (!btn) return;
+    
+    const level = gameState.level || 1;
+    if (level >= 15) {
+        btn.style.display = 'block';
+    } else {
+        btn.style.display = 'none';
+    }
+}
+
+async function openPlanetChangeModal() {
+    const modal = document.getElementById('planet-change-modal');
+    if (!modal) return;
+    
+    // Just show the modal - cost will be checked when they try to travel
+    modal.style.display = 'flex';
+}
+
+function closePlanetChangeModal() {
+    const modal = document.getElementById('planet-change-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function purchasePlanetTravel(planetName) {
+    const res = await apiPost('get_state');
+    if (res.status !== 'success') {
+        showToast('Failed to check player status.', 'error');
+        return;
+    }
+    
+    const level = parseInt(res.data.level) || 1;
+    const gold = parseInt(res.data.gold) || 0;
+    
+    // Planet-specific requirements
+    const planetRequirements = {
+        'Terra': { min_level: 0, cost_copper: 0, description: 'Free - Your home planet' },
+        'Solaris': { min_level: 30, cost_copper: 10000, description: '1 Gold (10000 Copper)' },
+        'Glaciem': { min_level: 15, cost_copper: 1500, description: '15 Silver (1500 Copper)' }
+    };
+    
+    if (!planetRequirements[planetName]) {
+        showToast('Unknown planet.', 'error');
+        return;
+    }
+    
+    const req = planetRequirements[planetName];
+    
+    // Check level requirement
+    if (level < req.min_level) {
+        showToast(`You need level ${req.min_level} to travel to ${planetName}! Current: ${level}/${req.min_level}`, 'error');
+        return;
+    }
+    
+    // Check cost
+    if (req.cost_copper > 0 && gold < req.cost_copper) {
+        const needed = req.cost_copper - gold;
+        showToast(`Not enough coins! Need ${req.cost_copper} copper, you have ${gold}. Missing: ${needed} copper`, 'error');
+        return;
+    }
+    
+    // Send teleport request to API
+    const teleRes = await apiPost('teleport_planet', { planet_name: planetName, cost: req.cost_copper });
+    if (teleRes.status === 'success') {
+        showToast(`✨ Traveled to ${planetName}!`, 'success');
+        closePlanetChangeModal();
+        // Reload game - reinitialize everything
+        setTimeout(() => {
+            initGame();
+        }, 500);
+    } else {
+        showToast(teleRes.message || 'Travel failed.', 'error');
+    }
+}
 // Wrap original switchTab to load quests when switching to quest tab
 const _originalSwitchTab = switchTab;
 switchTab = function(tabName) {
@@ -2962,3 +3044,4 @@ switchTab = function(tabName) {
     }
     _originalSwitchTab(tabName);
 };
+

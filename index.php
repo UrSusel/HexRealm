@@ -539,9 +539,50 @@ header('Expires: 0');
             color: #ffeaa7;
         }
 
+        /* Kontener na przyciski w prawym gornym rogu */
+        #top-right-buttons {
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            z-index: 1600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        #game-layout:not(.panel-collapsed) #top-right-buttons {
+            right: 20px;
+        }
+        #game-layout.panel-collapsed #top-right-buttons {
+            right: 20px;
+        }
+
+        /* Przycisk zmiany planety */
+        #planet-change-btn {
+            position: static;
+            padding: 10px 20px;
+            background: linear-gradient(180deg, #8b6f47 0%, #6b5737 50%, #4a3d28 100%);
+            color: #e0e0e0;
+            font-weight: bold;
+            border: 2px solid #5c4a35;
+            border-radius: 2px;
+            cursor: pointer;
+            z-index: 1599;
+            display: none;
+            box-shadow: 0 3px 0 #3a2820, 0 5px 10px rgba(255,215,0,0.2);
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+            transition: transform 0.1s;
+            image-rendering: pixelated;
+        }
+        #planet-change-btn:hover {
+            background: linear-gradient(180deg, #9b7f57 0%, #7b6747 50%, #5a4d38 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 0 #3a2820, 0 6px 12px rgba(255,215,0,0.3);
+            border-color: #ffd700;
+        }
+
         /* Przycisk zmiany świata */
         #world-btn {
-            position: absolute; top: 10px; right: 20px; 
+            position: static;
             padding: 10px 20px;
             background: linear-gradient(180deg, #2d8b57 0%, #1f6b3f 50%, #164d2e 100%);
             color: #e8f5e9;
@@ -1045,6 +1086,17 @@ header('Expires: 0');
                 z-index: 3100;
             }
 
+            #planet-change-btn {
+                top: auto;
+                bottom: 55px;
+                right: auto;
+                left: 20px;
+                position: fixed;
+                z-index: 3100;
+                padding: 5px 8px;
+                font-size: 10px;
+            }
+
             #shop-btn {
                 bottom: 100px; /* Move up to not be covered by mobile panel toggle */
                 padding: 6px 12px;
@@ -1189,6 +1241,16 @@ header('Expires: 0');
                 bottom: auto !important;
                 position: fixed;
                 z-index: 3100;
+            }
+            #planet-change-btn {
+                top: 50px !important;
+                left: 10px !important;
+                right: auto !important;
+                bottom: auto !important;
+                position: fixed;
+                z-index: 3100;
+                padding: 5px 8px;
+                font-size: 10px;
             }
             #shop-btn {
                 left: 50% !important;
@@ -1368,6 +1430,152 @@ header('Expires: 0');
                 z-index: 10001;
             }
         }
+
+        @keyframes cosmosScroll {
+            from { background-position: 0 0; }
+            to { background-position: -2000px 0; }
+        }
+
+        /* --- PLANETS MODAL --- */
+        .planets-container {
+            position: relative;
+            width: 90%;
+            max-width: 1000px;
+            max-height: 90vh;
+            background: linear-gradient(135deg, rgba(20,15,10,0.98), rgba(30,20,15,1.0));
+            background-image: url('assets/Planets/Space Background.png');
+            background-repeat: repeat-x;
+            background-size: auto 100%;
+            animation: cosmosScroll 80s linear infinite;
+            border: 2px solid #5c4a35;
+            border-radius: 10px;
+            padding: 30px;
+            overflow-y: auto;
+            box-shadow: 0 0 30px rgba(255, 215, 0, 0.2);
+            z-index: 10051;
+        }
+
+        .close-planets-btn {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: #5c4a35;
+            border: none;
+            color: #e0e0e0;
+            font-size: 24px;
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .close-planets-btn:hover {
+            background: #8b6f47;
+            transform: rotate(90deg);
+        }
+
+        .planets-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .planet-card {
+            background: rgba(30, 25, 20, 0.8);
+            border: 2px solid #8b6f47;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            overflow: hidden;
+        }
+
+        .planet-card:hover:not(.locked) {
+            transform: translateY(-5px);
+            border-color: #ffd700;
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.4);
+        }
+
+        .planet-card.locked {
+            opacity: 0.7;
+        }
+
+        .planet-gif {
+            width: 100%;
+            height: 150px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 5px;
+            margin-bottom: 15px;
+            overflow: hidden;
+        }
+
+        .planet-gif img {
+            max-width: 140px;
+            max-height: 140px;
+            image-rendering: pixelated;
+        }
+
+        .planet-card h2 {
+            color: #ffd700;
+            margin: 10px 0 5px 0;
+            font-size: 20px;
+        }
+
+        .planet-info {
+            color: #c9a875;
+            font-size: 14px;
+            margin: 8px 0;
+            min-height: 40px;
+        }
+
+        .planet-level {
+            color: #888;
+            font-size: 12px;
+            margin: 8px 0;
+            font-style: italic;
+        }
+
+        .planet-btn {
+            background: #8b6f47;
+            color: #e0e0e0;
+            border: 1px solid #5c4a35;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+            width: 100%;
+        }
+
+        .planet-btn:not(.locked):hover {
+            background: #a88860;
+            border-color: #ffd700;
+            color: #ffd700;
+        }
+
+        .planet-btn.locked {
+            background: #5c4a35;
+            color: #666;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        @media (max-width: 768px) {
+            .planets-container {
+                width: 95%;
+                padding: 20px;
+            }
+            .planets-grid {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1523,7 +1731,10 @@ header('Expires: 0');
             </div>
         </div>
 
-        <button id="world-btn" style="display:none;" onclick="showWorldSelection()">Select World 🌐</button>
+        <div id="top-right-buttons">
+            <button id="planet-change-btn" onclick="openPlanetChangeModal()">🌍 Change Planet</button>
+            <button id="world-btn" style="display:none;" onclick="showWorldSelection()">Select World 🌐</button>
+        </div>
         <button id="shop-btn" style="display:none; position:absolute; bottom:20px; left:50%; transform:translateX(-50%); z-index:1600;" onclick="openCityMenu()">🏰 Enter Market</button>
         <button id="expand-panel-btn" style="display:none; position:absolute; top:55px; right:10px; z-index:1600; background:linear-gradient(135deg, rgba(58,42,26,0.9), rgba(45,31,18,0.95)); color:#f4d58d; border:2px solid #61491f; padding:8px 12px; cursor:pointer; font-weight:bold; border-radius:2px; box-shadow: 0 2px 6px rgba(0,0,0,0.6); text-shadow: 1px 1px 2px rgba(0,0,0,0.8);" onclick="toggleRightPanel()" title="Show Panel (Tab)">«</button>
 
@@ -1719,6 +1930,37 @@ header('Expires: 0');
 </div>
 
 <button id="mobile-panel-toggle" onclick="toggleRightPanel()">▼</button>
+
+<div id="planet-change-modal" class="modal" style="display:none;">
+    <div class="planets-container">
+        <button class="close-planets-btn" onclick="closePlanetChangeModal()">✕</button>
+        <h1 style="color:#ffd700; margin-bottom:30px; text-align:center;">Travel Between Worlds</h1>
+        <p style="color:#c9a875; text-align:center; margin-bottom:20px; font-size:14px;">Cost: <span style="color:#fff;">15 Silver (1500 Copper)</span></p>
+        <div class="planets-grid">
+            <div class="planet-card" data-planet="Terra">
+                <div class="planet-gif"><img src="assets/Planets/Terra.gif" alt="Terra"></div>
+                <h2>Terra</h2>
+                <p class="planet-info">The ancestral home of mankind. Lush and thriving.</p>
+                <p class="planet-level">Your Origin</p>
+                <button class="planet-btn" onclick="purchasePlanetTravel('Terra')">Travel Here</button>
+            </div>
+            <div class="planet-card" data-planet="Solaris">
+                <div class="planet-gif"><img src="assets/Planets/Solaris.gif" alt="Solaris"></div>
+                <h2>Solaris</h2>
+                <p class="planet-info">A vast desert planet of sand and secrets.</p>
+                <p class="planet-level" id="solaris-cost-level">Cost: 1500 Copper</p>
+                <button class="planet-btn" id="solaris-travel-btn" onclick="purchasePlanetTravel('Solaris')">Travel Here</button>
+            </div>
+            <div class="planet-card" data-planet="Glaciem">
+                <div class="planet-gif"><img src="assets/Planets/Glaciem.gif" alt="Glaciem"></div>
+                <h2>Glaciem</h2>
+                <p class="planet-info">An icy frozen world of eternal winter.</p>
+                <p class="planet-level" id="glaciem-cost-level">Cost: 1500 Copper</p>
+                <button class="planet-btn" id="glaciem-travel-btn" onclick="purchasePlanetTravel('Glaciem')">Travel Here</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <script src="game.js?v=<?php echo $assetVersion; ?>"></script>
 </body>

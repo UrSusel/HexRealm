@@ -172,8 +172,22 @@ function getGameDistance($x1, $y1, $x2, $y2) {
 }
 
 function getWorldCapital($pdo, $worldId) {
-    $stmt = $pdo->prepare("SELECT x, y FROM map_tiles WHERE world_id = ? AND type = 'city_capital' LIMIT 1");
-    $stmt->execute([(int)$worldId]);
+    $worldId = (int)$worldId;
+    
+    if ($worldId === 3) {
+        // Solaris
+        $stmt = $pdo->prepare("SELECT x, y FROM tiles_solaris WHERE type = 'city_capital' LIMIT 1");
+        $stmt->execute();
+    } elseif ($worldId === 5) {
+        // Glaciem
+        $stmt = $pdo->prepare("SELECT x, y FROM tiles_glaciem WHERE type = 'city_capital' LIMIT 1");
+        $stmt->execute();
+    } else {
+        // Regular worlds
+        $stmt = $pdo->prepare("SELECT x, y FROM map_tiles WHERE world_id = ? AND type = 'city_capital' LIMIT 1");
+        $stmt->execute([$worldId]);
+    }
+    
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     if ($row) {
         return [(int)$row['x'], (int)$row['y']];
@@ -190,8 +204,22 @@ function worldExists($pdo, $worldId) {
 
 function worldHasTiles($pdo, $worldId) {
     if ($worldId <= 0) return false;
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM map_tiles WHERE world_id = ?");
-    $stmt->execute([(int)$worldId]);
+    
+    // Solaris uses tiles_solaris, Glaciem uses tiles_glaciem, others use map_tiles
+    if ((int)$worldId === 3) {
+        // Solaris
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM tiles_solaris");
+        $stmt->execute();
+    } elseif ((int)$worldId === 5) {
+        // Glaciem
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM tiles_glaciem");
+        $stmt->execute();
+    } else {
+        // Regular worlds use map_tiles
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM map_tiles WHERE world_id = ?");
+        $stmt->execute([(int)$worldId]);
+    }
+    
     return ((int)$stmt->fetchColumn()) > 0;
 }
 
@@ -327,7 +355,7 @@ if ($action === 'get_worlds_list') {
             SELECT w.id, w.name, w.width, w.height,
             (SELECT COUNT(*) FROM characters c WHERE c.world_id = w.id AND c.last_seen > DATE_SUB(NOW(), INTERVAL ? MINUTE)) as player_count
             FROM worlds w
-            WHERE w.is_tutorial = 0
+            WHERE w.is_tutorial = 0 AND w.id NOT IN (2, 3, 5)
         ");
         $stmt->execute([$timeoutMinutes]);
     } catch (Exception $e) {
@@ -336,7 +364,7 @@ if ($action === 'get_worlds_list') {
             SELECT w.id, w.name, w.width, w.height,
             (SELECT COUNT(*) FROM characters c WHERE c.world_id = w.id) as player_count
             FROM worlds w
-            WHERE w.is_tutorial = 0
+            WHERE w.is_tutorial = 0 AND w.id NOT IN (2, 3, 5)
         ");
     }
     
@@ -521,9 +549,24 @@ if ($action === 'get_map') {
     $minX = $char['pos_x'] - $rangeX; $maxX = $char['pos_x'] + $rangeX;
     $minY = $char['pos_y'] - $rangeY; $maxY = $char['pos_y'] + $rangeY;
 
-    $stmt = $pdo->prepare("SELECT * FROM map_tiles WHERE world_id = ? AND x BETWEEN ? AND ? AND y BETWEEN ? AND ?");
-    $stmt->execute([$char['world_id'], $minX, $maxX, $minY, $maxY]);
-    $tiles = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    // Read from appropriate table based on world_id
+    if ((int)$char['world_id'] === 3) {
+        // Solaris - read from tiles_solaris
+        $stmt = $pdo->prepare("SELECT x, y, type FROM tiles_solaris WHERE x BETWEEN ? AND ? AND y BETWEEN ? AND ?");
+        $stmt->execute([$minX, $maxX, $minY, $maxY]);
+        $tiles = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } elseif ((int)$char['world_id'] === 5) {
+        // Glaciem - read from tiles_glaciem
+        $stmt = $pdo->prepare("SELECT x, y, type FROM tiles_glaciem WHERE x BETWEEN ? AND ? AND y BETWEEN ? AND ?");
+        $stmt->execute([$minX, $maxX, $minY, $maxY]);
+        $tiles = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } else {
+        // Regular worlds - read from map_tiles
+        $stmt = $pdo->prepare("SELECT * FROM map_tiles WHERE world_id = ? AND x BETWEEN ? AND ? AND y BETWEEN ? AND ?");
+        $stmt->execute([$char['world_id'], $minX, $maxX, $minY, $maxY]);
+        $tiles = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+    
     if (!$tiles) {
         echo json_encode([
             'status' => 'error',
@@ -554,9 +597,20 @@ if ($action === 'move') {
     
     if ($dist > $currentSpeed) { echo json_encode(['status' => 'error', 'message' => 'Too far!']); exit; }
 
-    
-    $tileStmt = $pdo->prepare("SELECT type FROM map_tiles WHERE x = ? AND y = ? AND world_id = ?");
-    $tileStmt->execute([$targetX, $targetY, $char['world_id']]);
+    // Read tile from appropriate table based on world_id
+    if ((int)$char['world_id'] === 3) {
+        // Solaris - read from tiles_solaris
+        $tileStmt = $pdo->prepare("SELECT type FROM tiles_solaris WHERE x = ? AND y = ?");
+        $tileStmt->execute([$targetX, $targetY]);
+    } elseif ((int)$char['world_id'] === 5) {
+        // Glaciem - read from tiles_glaciem
+        $tileStmt = $pdo->prepare("SELECT type FROM tiles_glaciem WHERE x = ? AND y = ?");
+        $tileStmt->execute([$targetX, $targetY]);
+    } else {
+        // Regular worlds - read from map_tiles
+        $tileStmt = $pdo->prepare("SELECT type FROM map_tiles WHERE x = ? AND y = ? AND world_id = ?");
+        $tileStmt->execute([$targetX, $targetY, $char['world_id']]);
+    }
     $targetTile = $tileStmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$targetTile || $targetTile['type'] === 'water' || $targetTile['type'] === 'mountain') {
@@ -694,8 +748,20 @@ if ($action === 'move') {
     $minX = $targetX - $rangeX; $maxX = $targetX + $rangeX;
     $minY = $targetY - $rangeY; $maxY = $targetY + $rangeY;
     
-    $mapStmt = $pdo->prepare("SELECT * FROM map_tiles WHERE world_id = ? AND x BETWEEN ? AND ? AND y BETWEEN ? AND ?");
-    $mapStmt->execute([$char['world_id'], $minX, $maxX, $minY, $maxY]);
+    // Read from appropriate table based on world_id
+    if ((int)$char['world_id'] === 3) {
+        // Solaris
+        $mapStmt = $pdo->prepare("SELECT x, y, type FROM tiles_solaris WHERE x BETWEEN ? AND ? AND y BETWEEN ? AND ?");
+        $mapStmt->execute([$minX, $maxX, $minY, $maxY]);
+    } elseif ((int)$char['world_id'] === 5) {
+        // Glaciem
+        $mapStmt = $pdo->prepare("SELECT x, y, type FROM tiles_glaciem WHERE x BETWEEN ? AND ? AND y BETWEEN ? AND ?");
+        $mapStmt->execute([$minX, $maxX, $minY, $maxY]);
+    } else {
+        // Regular worlds
+        $mapStmt = $pdo->prepare("SELECT * FROM map_tiles WHERE world_id = ? AND x BETWEEN ? AND ? AND y BETWEEN ? AND ?");
+        $mapStmt->execute([$char['world_id'], $minX, $maxX, $minY, $maxY]);
+    }
     $localTiles = $mapStmt->fetchAll(PDO::FETCH_ASSOC);
 
     echo json_encode([
@@ -1840,6 +1906,146 @@ function generateRandomDailyChallenge($pdo, $charId) {
 if ($action === 'get_daily_challenge') {
     // TODO: Implement daily challenges if needed
     echo json_encode(['status' => 'error', 'message' => 'Not implemented']); exit;
+}
+
+// --- PLANET TELEPORTATION ---
+if ($action === 'teleport_planet') {
+    $planetName = $input['planet_name'] ?? '';
+    $cost = (int)($input['cost'] ?? 0); // Cost in copper
+    
+    // Planet-specific requirements
+    $planetRequirements = [
+        'Terra' => ['min_level' => 0, 'cost_copper' => 0],    // Return to last multi-player world
+        'Solaris' => ['min_level' => 30, 'cost_copper' => 10000],  // 1 Gold = 10000 copper, level 30
+        'Glaciem' => ['min_level' => 15, 'cost_copper' => 1500]    // 15 Silver = 1500 copper, level 15
+    ];
+    
+    if (!isset($planetRequirements[$planetName])) {
+        echo json_encode(['status' => 'error', 'message' => 'Unknown planet.']); exit;
+    }
+    
+    $req = $planetRequirements[$planetName];
+    
+    // Check level requirement
+    if ($char['level'] < $req['min_level']) {
+        echo json_encode(['status' => 'error', 'message' => "You need level {$req['min_level']} to travel to {$planetName}."]); exit;
+    }
+    
+    // Check cost and deduct if needed
+    if ($req['cost_copper'] > 0) {
+        // Check if player has enough gold
+        if ($char['gold'] < $req['cost_copper']) {
+            echo json_encode(['status' => 'error', 'message' => 'Not enough coins! Need ' . $req['cost_copper'] . ' copper.']); exit;
+        }
+        
+        // Deduct cost from gold
+        $newGold = $char['gold'] - $req['cost_copper'];
+        $pdo->prepare("UPDATE characters SET gold = ? WHERE id = ?")->execute([$newGold, $charId]);
+    }
+    
+    // Determine target world ID based on planet
+    if ($planetName === 'Terra') {
+        // TERRA: Return to last visited multi-player world (not a planet)
+        // Check if player has saved position on any valid multi-player world (exclude planets)
+        $stmt = $pdo->prepare("SELECT sp.world_id, sp.pos_x, sp.pos_y FROM saved_positions sp\n            JOIN worlds w ON w.id = sp.world_id\n            WHERE sp.character_id = ? AND sp.world_id NOT IN (3, 5)\n              AND EXISTS (SELECT 1 FROM map_tiles m WHERE m.world_id = sp.world_id LIMIT 1)\n            ORDER BY sp.updated_at DESC LIMIT 1");
+        $stmt->execute([$charId]);
+        $savedWorld = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($savedWorld) {
+            // Return to last known multi-player world
+            $newWorldId = $savedWorld['world_id'];
+            $newX = $savedWorld['pos_x'];
+            $newY = $savedWorld['pos_y'];
+        } else {
+            // No saved world - find any multi-player world with tiles and spawn at capital
+            $stmt = $pdo->prepare("
+                SELECT w.id FROM worlds w
+                WHERE w.id NOT IN (3, 5) AND EXISTS (
+                    SELECT 1 FROM map_tiles m WHERE m.world_id = w.id LIMIT 1
+                )
+                LIMIT 1
+            ");
+            $stmt->execute();
+            $world = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$world) {
+                echo json_encode(['status' => 'error', 'message' => 'No multi-player worlds available.']); exit;
+            }
+            
+            $newWorldId = $world['id'];
+            
+            // Spawn at city_capital
+            $stmt = $pdo->prepare("SELECT x, y FROM map_tiles WHERE world_id = ? AND type = 'city_capital' LIMIT 1");
+            $stmt->execute([$newWorldId]);
+            $cityPos = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($cityPos) {
+                $newX = $cityPos['x'];
+                $newY = $cityPos['y'];
+            } else {
+                $newX = 10;
+                $newY = 10;
+            }
+        }
+    } else {
+        // SOLARIS or GLACIEM: Use planet-specific world ID
+        $planetMap = [
+            'Solaris' => 3,
+            'Glaciem' => 5
+        ];
+        
+        if (!isset($planetMap[$planetName])) {
+            echo json_encode(['status' => 'error', 'message' => 'Unknown planet.']); exit;
+        }
+        
+        $newWorldId = $planetMap[$planetName];
+        
+        // Get saved position for this planet
+        $stmt = $pdo->prepare("SELECT pos_x, pos_y FROM saved_positions WHERE character_id = ? AND world_id = ?");
+        $stmt->execute([$charId, $newWorldId]);
+        $savedPos = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($savedPos) {
+            // Return to last known position on this planet
+            $newX = $savedPos['pos_x'];
+            $newY = $savedPos['pos_y'];
+        } else {
+            // First time on this planet - determine spawn location
+            if ($newWorldId === 3) {
+                // Solaris - spawn at city_capital from tiles_solaris
+                $stmt = $pdo->prepare("SELECT x, y FROM tiles_solaris WHERE type = 'city_capital' LIMIT 1");
+                $stmt->execute();
+                $cityPos = $stmt->fetch(PDO::FETCH_ASSOC);
+                $newX = $cityPos ? $cityPos['x'] : 250;
+                $newY = $cityPos ? $cityPos['y'] : 500;
+            } elseif ($newWorldId === 5) {
+                // Glaciem - spawn at city_capital from tiles_glaciem
+                $stmt = $pdo->prepare("SELECT x, y FROM tiles_glaciem WHERE type = 'city_capital' LIMIT 1");
+                $stmt->execute();
+                $cityPos = $stmt->fetch(PDO::FETCH_ASSOC);
+                $newX = $cityPos ? $cityPos['x'] : 250;
+                $newY = $cityPos ? $cityPos['y'] : 500;
+            }
+        }
+    }
+    
+    // Ensure world exists
+    $stmt = $pdo->prepare("SELECT id FROM worlds WHERE id = ?");
+    $stmt->execute([$newWorldId]);
+    if (!$stmt->fetch()) {
+        echo json_encode(['status' => 'error', 'message' => 'World does not exist.']); exit;
+    }
+    
+    // Update character world and position
+    $stmt = $pdo->prepare("UPDATE characters SET world_id = ?, pos_x = ?, pos_y = ? WHERE id = ?");
+    $stmt->execute([$newWorldId, $newX, $newY, $charId]);
+    
+    // Save position for future returns to this world (updated_at will auto-update)
+    $stmt = $pdo->prepare("INSERT INTO saved_positions (character_id, world_id, pos_x, pos_y) VALUES (?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE pos_x = VALUES(pos_x), pos_y = VALUES(pos_y), updated_at = CURRENT_TIMESTAMP");
+    $stmt->execute([$charId, $newWorldId, $newX, $newY]);
+    
+    echo json_encode(['status' => 'success', 'message' => 'Traveled to ' . $planetName, 'world_id' => $newWorldId, 'pos_x' => $newX, 'pos_y' => $newY]); exit;
 }
 
 ?>

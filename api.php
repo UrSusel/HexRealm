@@ -32,8 +32,418 @@ function safeStrtotime($dateString) {
     return time();
 }
 
+function getMapViewportRangeByGraphicsPreset($preset) {
+    $preset = strtolower(trim((string)$preset));
+    if ($preset === 'auto' || $preset === '') {
+        $preset = 'medium';
+    }
+
+    if ($preset === 'very_low') {
+        return [6, 8];
+    }
+    if ($preset === 'low') {
+        return [8, 11];
+    }
+    if ($preset === 'medium') {
+        return [10, 14];
+    }
+
+    return [10, 14];
+}
+
+function slugifySkillId($value) {
+    $slug = strtolower($value);
+    $slug = preg_replace('/[^a-z0-9]+/', '_', $slug);
+    return trim($slug, '_');
+}
+
+function inferSkillEffect($category, $fileBaseName) {
+    $n = strtolower($fileBaseName);
+
+    if ($category === 'Spells') {
+        if (strpos($n, 'healing') !== false || strpos($n, 'mana_replenish') !== false) {
+            return ['kind' => 'heal', 'power' => 35, 'description' => 'Restore health during combat.'];
+        }
+        if (strpos($n, 'divine_protection') !== false || strpos($n, 'fortify') !== false) {
+            return ['kind' => 'buff_defense', 'power' => 40, 'description' => 'Gain strong defensive stance.'];
+        }
+        if (strpos($n, 'frenzy') !== false) {
+            return ['kind' => 'buff_attack', 'power' => 30, 'description' => 'Increase your damage for the rest of combat.'];
+        }
+        return ['kind' => 'damage', 'power' => 20, 'description' => 'Deal magical damage.'];
+    }
+
+    if ($category === 'Buffs') {
+        if (strpos($n, 'defense') !== false || strpos($n, 'ghost_form') !== false || strpos($n, 'resistance') !== false || strpos($n, 'regeneration') !== false) {
+            return ['kind' => 'buff_defense', 'power' => 25, 'description' => 'Increase survivability.'];
+        }
+        return ['kind' => 'buff_attack', 'power' => 20, 'description' => 'Increase offensive power.'];
+    }
+
+    return ['kind' => 'debuff_enemy', 'power' => 20, 'description' => 'Reduce enemy combat effectiveness.'];
+}
+
+function getClassNameById($classId) {
+    $classId = (int)$classId;
+    if ($classId === 1) return 'Warrior';
+    if ($classId === 2) return 'Mage';
+    if ($classId === 3) return 'Rogue';
+    return 'Unknown';
+}
+
+function inferSkillClassPath($category, $effectKind, $fileBaseName) {
+    $name = strtolower((string)$fileBaseName);
+
+    if ($category === 'Debuffs' || $effectKind === 'debuff_enemy') {
+        return 3; // Rogue
+    }
+
+    if ($category === 'Spells' || $effectKind === 'damage' || $effectKind === 'heal') {
+        return 2; // Mage
+    }
+
+    if ($effectKind === 'buff_attack') {
+        if (
+            strpos($name, 'critical') !== false ||
+            strpos($name, 'speed') !== false ||
+            strpos($name, 'shadow') !== false ||
+            strpos($name, 'poison') !== false
+        ) {
+            return 3; // Rogue
+        }
+    }
+
+    return 1; // Warrior default for buffs/defensive
+}
+
+function getSkillResetCostCopper() {
+    return 2500;
+}
+
+function scaleSkillPowerByTier($effectKind, $basePower, $tier) {
+    $basePower = (int)$basePower;
+    $tier = max(1, (int)$tier);
+    $bonusSteps = $tier - 1;
+
+    if ($bonusSteps <= 0) return $basePower;
+
+    if ($effectKind === 'damage') {
+        return $basePower + ($bonusSteps * 6);
+    }
+    if ($effectKind === 'heal') {
+        return $basePower + ($bonusSteps * 5);
+    }
+    if ($effectKind === 'buff_attack') {
+        return min(60, $basePower + ($bonusSteps * 5));
+    }
+    if ($effectKind === 'buff_defense') {
+        return min(70, $basePower + ($bonusSteps * 5));
+    }
+    if ($effectKind === 'debuff_enemy') {
+        return min(65, $basePower + ($bonusSteps * 5));
+    }
+
+    return $basePower + ($bonusSteps * 4);
+}
+
+function applySkillProgressionTree($skills) {
+    if (!is_array($skills) || count($skills) === 0) {
+        return $skills;
+    }
+
+    $indicesByCategory = [];
+    foreach ($skills as $index => $skill) {
+        $branch = (string)($skill['tree_branch'] ?? ($skill['category'] ?? 'General'));
+        if (!isset($indicesByCategory[$branch])) {
+            $indicesByCategory[$branch] = [];
+        }
+        $indicesByCategory[$branch][] = $index;
+    }
+
+    foreach ($indicesByCategory as $category => $indices) {
+        $prevSkillId = null;
+        $tier = 1;
+
+        foreach ($indices as $skillIndex) {
+            $skills[$skillIndex]['tier'] = $tier;
+            $skills[$skillIndex]['required_level'] = min(20, max(1, $tier * 5));
+            $skills[$skillIndex]['prerequisite_skill_id'] = $prevSkillId;
+            $skills[$skillIndex]['power'] = scaleSkillPowerByTier(
+                $skills[$skillIndex]['effect_kind'] ?? '',
+                (int)($skills[$skillIndex]['power'] ?? 0),
+                $tier
+            );
+
+            $prevSkillId = (string)$skills[$skillIndex]['id'];
+            $tier++;
+        }
+    }
+
+    return $skills;
+}
+
+function getUnlockableSkillIds($catalog, $unlockedSkillIds, $level, $remainingSlots, $classId = null) {
+    $level = (int)$level;
+    $remainingSlots = max(0, (int)$remainingSlots);
+    $classId = $classId === null ? null : (int)$classId;
+    if ($remainingSlots <= 0) return [];
+
+    $unlockable = [];
+    $unlockedSet = array_flip(array_map('strval', (array)$unlockedSkillIds));
+
+    foreach ((array)$catalog as $skill) {
+        $skillId = (string)($skill['id'] ?? '');
+        if ($skillId === '' || isset($unlockedSet[$skillId])) {
+            continue;
+        }
+
+        $requiredLevel = (int)($skill['required_level'] ?? 1);
+        if ($level < $requiredLevel) {
+            continue;
+        }
+
+        $pathClassId = isset($skill['path_class_id']) ? (int)$skill['path_class_id'] : 0;
+        if ($classId !== null && $classId > 0 && $pathClassId > 0 && $pathClassId !== $classId) {
+            continue;
+        }
+
+        $prerequisite = (string)($skill['prerequisite_skill_id'] ?? '');
+        if ($prerequisite !== '' && !isset($unlockedSet[$prerequisite])) {
+            continue;
+        }
+
+        $unlockable[] = $skillId;
+    }
+
+    return $unlockable;
+}
+
+function getSkillCatalog() {
+    static $cache = null;
+    if ($cache !== null) return $cache;
+
+    $baseDir = __DIR__ . '/assets/skils';
+    $baseWebPath = 'assets/skils';
+    $categories = ['Buffs', 'Debuffs', 'Spells'];
+    $skills = [];
+
+    foreach ($categories as $category) {
+        $pattern = $baseDir . '/' . $category . '/*.png';
+        $files = glob($pattern) ?: [];
+
+        foreach ($files as $absPath) {
+            $fileName = basename($absPath);
+            $base = pathinfo($fileName, PATHINFO_FILENAME);
+            $display = str_replace('_', ' ', $base);
+            $display = preg_replace('/\s*\((.*?)\)/', ' - $1', $display);
+            $display = ucwords($display);
+
+            $effect = inferSkillEffect($category, $base);
+            $id = $category . ':' . slugifySkillId($base);
+            $pathClassId = inferSkillClassPath($category, $effect['kind'], $base);
+            $pathName = getClassNameById($pathClassId);
+
+            $skills[] = [
+                'id' => $id,
+                'name' => $display,
+                'category' => $category,
+                'tree_branch' => $pathName . ':' . $category,
+                'path_class_id' => $pathClassId,
+                'path_name' => $pathName,
+                'icon_path' => $baseWebPath . '/' . $category . '/' . $fileName,
+                'effect_kind' => $effect['kind'],
+                'power' => $effect['power'],
+                'description' => $effect['description']
+            ];
+        }
+    }
+
+    usort($skills, function ($a, $b) {
+        if ($a['category'] === $b['category']) {
+            return strcmp($a['name'], $b['name']);
+        }
+        return strcmp($a['category'], $b['category']);
+    });
+
+    $skills = applySkillProgressionTree($skills);
+
+    $cache = $skills;
+    return $cache;
+}
+
+function getSkillCatalogMap() {
+    $map = [];
+    foreach (getSkillCatalog() as $skill) {
+        $map[$skill['id']] = $skill;
+    }
+    return $map;
+}
+
+function ensureCharacterSkillUnlocksTable(PDO $pdo) {
+    static $ready = null;
+    if ($ready !== null) return $ready;
+
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS character_skill_unlocks (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            character_id INT NOT NULL,
+            skill_id VARCHAR(191) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uniq_character_skill (character_id, skill_id),
+            INDEX idx_character (character_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        $ready = true;
+    } catch (Exception $e) {
+        $ready = false;
+    }
+
+    return $ready;
+}
+
+function getUnlockedSkillIdsForCharacter(PDO $pdo, $charId) {
+    $charId = (int)$charId;
+
+    if (!ensureCharacterSkillUnlocksTable($pdo)) {
+        return [];
+    }
+
+    try {
+        $stmt = $pdo->prepare("SELECT skill_id FROM character_skill_unlocks WHERE character_id = ? ORDER BY id ASC");
+        $stmt->execute([$charId]);
+        return array_values(array_unique(array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN))));
+    } catch (Exception $e) {
+        return [];
+    }
+}
+
+function getSkillUnlockStatus(PDO $pdo, $charId, $level, $classId = null) {
+    $charId = (int)$charId;
+    $level = (int)$level;
+
+    $shouldHave = min(4, max(0, intval(floor($level / 5))));
+    $existing = getUnlockedSkillIdsForCharacter($pdo, $charId);
+
+    $remaining = max(0, $shouldHave - count($existing));
+    $unlockableSkillIds = getUnlockableSkillIds(getSkillCatalog(), $existing, $level, $remaining, $classId);
+
+    return [
+        'should_have' => $shouldHave,
+        'remaining' => $remaining,
+        'unlocked_skill_ids' => getUnlockedSkillIdsForCharacter($pdo, $charId),
+        'unlockable_skill_ids' => array_values($unlockableSkillIds),
+        'newly_unlocked' => []
+    ];
+}
+
+function unlockSkillForCharacter(PDO $pdo, $charId, $level, $skillId, $classId = null) {
+    $charId = (int)$charId;
+    $level = (int)$level;
+    $skillId = trim((string)$skillId);
+
+    $catalogMap = getSkillCatalogMap();
+    if ($skillId === '' || !isset($catalogMap[$skillId])) {
+        return ['status' => 'error', 'message' => 'Unknown skill.'];
+    }
+
+    if (!ensureCharacterSkillUnlocksTable($pdo)) {
+        return ['status' => 'error', 'message' => 'Skill storage unavailable.'];
+    }
+
+    $status = getSkillUnlockStatus($pdo, $charId, $level, $classId);
+    $existing = $status['unlocked_skill_ids'];
+
+    if (in_array($skillId, $existing, true)) {
+        return [
+            'status' => 'error',
+            'message' => 'Skill already unlocked.',
+            'unlocked_skill_ids' => array_values($existing),
+            'should_have' => (int)$status['should_have'],
+            'remaining' => (int)$status['remaining']
+        ];
+    }
+
+    if ((int)$status['remaining'] <= 0) {
+        return [
+            'status' => 'error',
+            'message' => 'No unlock slots available for your level.',
+            'unlocked_skill_ids' => array_values($existing),
+            'should_have' => (int)$status['should_have'],
+            'remaining' => 0
+        ];
+    }
+
+    $unlockableSet = array_flip(array_map('strval', (array)($status['unlockable_skill_ids'] ?? [])));
+    if (!isset($unlockableSet[$skillId])) {
+        return [
+            'status' => 'error',
+            'message' => 'This skill is locked by progression requirements.',
+            'unlocked_skill_ids' => array_values($existing),
+            'should_have' => (int)$status['should_have'],
+            'remaining' => (int)$status['remaining'],
+            'unlockable_skill_ids' => array_values((array)($status['unlockable_skill_ids'] ?? []))
+        ];
+    }
+
+    try {
+        $pdo->prepare("INSERT INTO character_skill_unlocks (character_id, skill_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE skill_id = skill_id")
+            ->execute([$charId, $skillId]);
+    } catch (Exception $e) {
+        return ['status' => 'error', 'message' => 'Failed to unlock skill.'];
+    }
+
+    $newStatus = getSkillUnlockStatus($pdo, $charId, $level, $classId);
+    return [
+        'status' => 'success',
+        'message' => 'Skill unlocked.',
+        'unlocked_skill' => $catalogMap[$skillId],
+        'unlocked_skill_ids' => array_values($newStatus['unlocked_skill_ids']),
+        'should_have' => (int)$newStatus['should_have'],
+        'remaining' => (int)$newStatus['remaining'],
+        'unlockable_skill_ids' => array_values((array)($newStatus['unlockable_skill_ids'] ?? []))
+    ];
+}
+
+function resetSkillTreeForCharacter(PDO $pdo, $charId, $level, $classId, $currentGold) {
+    $charId = (int)$charId;
+    $level = (int)$level;
+    $classId = (int)$classId;
+    $currentGold = (int)$currentGold;
+
+    $cost = (int)getSkillResetCostCopper();
+    if ($currentGold < $cost) {
+        return [
+            'status' => 'error',
+            'message' => 'Not enough coins to reset skill tree.',
+            'cost_copper' => $cost,
+            'needed_copper' => ($cost - $currentGold)
+        ];
+    }
+
+    try {
+        if (ensureCharacterSkillUnlocksTable($pdo)) {
+            $pdo->prepare("DELETE FROM character_skill_unlocks WHERE character_id = ?")->execute([$charId]);
+        }
+        $newGold = max(0, $currentGold - $cost);
+        $pdo->prepare("UPDATE characters SET gold = ? WHERE id = ?")->execute([$newGold, $charId]);
+    } catch (Exception $e) {
+        return ['status' => 'error', 'message' => 'Failed to reset skill tree.'];
+    }
+
+    $status = getSkillUnlockStatus($pdo, $charId, $level, $classId);
+    return [
+        'status' => 'success',
+        'message' => 'Skill tree has been reset.',
+        'gold' => $newGold,
+        'cost_copper' => $cost,
+        'unlocked_skill_ids' => array_values((array)$status['unlocked_skill_ids']),
+        'unlockable_skill_ids' => array_values((array)$status['unlockable_skill_ids']),
+        'should_have' => (int)$status['should_have'],
+        'remaining' => (int)$status['remaining']
+    ];
+}
+
 $input = json_decode(file_get_contents('php://input'), true);
-$action = $input['action'] ?? '';  // <-- ADD THIS LINE
+$action = $input['action'] ?? '';
 
 // --- HELPER: Check remembered login via cookie FIRST ---
 if (!isset($_SESSION['user_id']) && isset($_COOKIE['rpg_remember'])) {
@@ -172,8 +582,22 @@ function getGameDistance($x1, $y1, $x2, $y2) {
 }
 
 function getWorldCapital($pdo, $worldId) {
-    $stmt = $pdo->prepare("SELECT x, y FROM map_tiles WHERE world_id = ? AND type = 'city_capital' LIMIT 1");
-    $stmt->execute([(int)$worldId]);
+    $worldId = (int)$worldId;
+    
+    if ($worldId === 3) {
+        // Solaris
+        $stmt = $pdo->prepare("SELECT x, y FROM tiles_solaris WHERE type = 'city_capital' LIMIT 1");
+        $stmt->execute();
+    } elseif ($worldId === 5) {
+        // Glaciem
+        $stmt = $pdo->prepare("SELECT x, y FROM tiles_glaciem WHERE type = 'city_capital' LIMIT 1");
+        $stmt->execute();
+    } else {
+        // Regular worlds
+        $stmt = $pdo->prepare("SELECT x, y FROM map_tiles WHERE world_id = ? AND type = 'city_capital' LIMIT 1");
+        $stmt->execute([$worldId]);
+    }
+    
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     if ($row) {
         return [(int)$row['x'], (int)$row['y']];
@@ -190,8 +614,22 @@ function worldExists($pdo, $worldId) {
 
 function worldHasTiles($pdo, $worldId) {
     if ($worldId <= 0) return false;
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM map_tiles WHERE world_id = ?");
-    $stmt->execute([(int)$worldId]);
+    
+    // Solaris uses tiles_solaris, Glaciem uses tiles_glaciem, others use map_tiles
+    if ((int)$worldId === 3) {
+        // Solaris
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM tiles_solaris");
+        $stmt->execute();
+    } elseif ((int)$worldId === 5) {
+        // Glaciem
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM tiles_glaciem");
+        $stmt->execute();
+    } else {
+        // Regular worlds use map_tiles
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM map_tiles WHERE world_id = ?");
+        $stmt->execute([(int)$worldId]);
+    }
+    
     return ((int)$stmt->fetchColumn()) > 0;
 }
 
@@ -327,7 +765,7 @@ if ($action === 'get_worlds_list') {
             SELECT w.id, w.name, w.width, w.height,
             (SELECT COUNT(*) FROM characters c WHERE c.world_id = w.id AND c.last_seen > DATE_SUB(NOW(), INTERVAL ? MINUTE)) as player_count
             FROM worlds w
-            WHERE w.is_tutorial = 0
+            WHERE w.is_tutorial = 0 AND w.id NOT IN (2, 3, 5)
         ");
         $stmt->execute([$timeoutMinutes]);
     } catch (Exception $e) {
@@ -336,7 +774,7 @@ if ($action === 'get_worlds_list') {
             SELECT w.id, w.name, w.width, w.height,
             (SELECT COUNT(*) FROM characters c WHERE c.world_id = w.id) as player_count
             FROM worlds w
-            WHERE w.is_tutorial = 0
+            WHERE w.is_tutorial = 0 AND w.id NOT IN (2, 3, 5)
         ");
     }
     
@@ -513,17 +951,80 @@ if ($action === 'get_state') {
     exit;
 }
 
+if ($action === 'get_skill_catalog') {
+    $skills = getSkillCatalog();
+    $unlockStatus = getSkillUnlockStatus($pdo, $charId, (int)$char['level'], (int)($char['class_id'] ?? 0));
+    $unlockedSkillIds = $unlockStatus['unlocked_skill_ids'];
+    echo json_encode([
+        'status' => 'success',
+        'skills' => $skills,
+        'reset_cost_copper' => getSkillResetCostCopper(),
+        'unlocked_skill_ids' => array_values($unlockedSkillIds),
+        'unlockable_skill_ids' => array_values((array)($unlockStatus['unlockable_skill_ids'] ?? []))
+    ]); exit;
+}
+
+if ($action === 'ensure_skills_unlocked') {
+    $unlockResult = getSkillUnlockStatus($pdo, $charId, (int)$char['level'], (int)($char['class_id'] ?? 0));
+    $unlockedSkillIds = $unlockResult['unlocked_skill_ids'];
+    $shouldHave = (int)$unlockResult['should_have'];
+    
+    echo json_encode([
+        'status' => 'success',
+        'unlocked_count' => count($unlockedSkillIds),
+        'reset_cost_copper' => getSkillResetCostCopper(),
+        'should_have' => $shouldHave,
+        'remaining' => (int)$unlockResult['remaining'],
+        'unlockable_skill_ids' => array_values((array)($unlockResult['unlockable_skill_ids'] ?? [])),
+        'unlocked_skill_ids' => array_values($unlockedSkillIds)
+    ]); exit;
+}
+
+if ($action === 'unlock_skill') {
+    $skillId = (string)($input['skill_id'] ?? '');
+    $result = unlockSkillForCharacter($pdo, $charId, (int)$char['level'], $skillId, (int)($char['class_id'] ?? 0));
+    $result['reset_cost_copper'] = getSkillResetCostCopper();
+    echo json_encode($result); exit;
+}
+
+if ($action === 'reset_skill_tree') {
+    if (!empty($char['in_combat'])) {
+        echo json_encode(['status' => 'error', 'message' => 'Cannot reset skills during combat.']); exit;
+    }
+    $result = resetSkillTreeForCharacter(
+        $pdo,
+        $charId,
+        (int)$char['level'],
+        (int)($char['class_id'] ?? 0),
+        (int)($char['gold'] ?? 0)
+    );
+    echo json_encode($result); exit;
+}
+
 if ($action === 'get_map') {
-    // Fog of War / Optimization: Fetch only area around player
-    $rangeX = 10; // Covers ~20 width
-    $rangeY = 14; // Covers ~28 height
+    [$rangeX, $rangeY] = getMapViewportRangeByGraphicsPreset($input['graphics_preset'] ?? 'medium');
     
     $minX = $char['pos_x'] - $rangeX; $maxX = $char['pos_x'] + $rangeX;
     $minY = $char['pos_y'] - $rangeY; $maxY = $char['pos_y'] + $rangeY;
 
-    $stmt = $pdo->prepare("SELECT * FROM map_tiles WHERE world_id = ? AND x BETWEEN ? AND ? AND y BETWEEN ? AND ?");
-    $stmt->execute([$char['world_id'], $minX, $maxX, $minY, $maxY]);
-    $tiles = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    // Read from appropriate table based on world_id
+    if ((int)$char['world_id'] === 3) {
+        // Solaris - read from tiles_solaris
+        $stmt = $pdo->prepare("SELECT x, y, type FROM tiles_solaris WHERE x BETWEEN ? AND ? AND y BETWEEN ? AND ?");
+        $stmt->execute([$minX, $maxX, $minY, $maxY]);
+        $tiles = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } elseif ((int)$char['world_id'] === 5) {
+        // Glaciem - read from tiles_glaciem
+        $stmt = $pdo->prepare("SELECT x, y, type FROM tiles_glaciem WHERE x BETWEEN ? AND ? AND y BETWEEN ? AND ?");
+        $stmt->execute([$minX, $maxX, $minY, $maxY]);
+        $tiles = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } else {
+        // Regular worlds - read from map_tiles
+        $stmt = $pdo->prepare("SELECT * FROM map_tiles WHERE world_id = ? AND x BETWEEN ? AND ? AND y BETWEEN ? AND ?");
+        $stmt->execute([$char['world_id'], $minX, $maxX, $minY, $maxY]);
+        $tiles = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+    
     if (!$tiles) {
         echo json_encode([
             'status' => 'error',
@@ -554,9 +1055,20 @@ if ($action === 'move') {
     
     if ($dist > $currentSpeed) { echo json_encode(['status' => 'error', 'message' => 'Too far!']); exit; }
 
-    
-    $tileStmt = $pdo->prepare("SELECT type FROM map_tiles WHERE x = ? AND y = ? AND world_id = ?");
-    $tileStmt->execute([$targetX, $targetY, $char['world_id']]);
+    // Read tile from appropriate table based on world_id
+    if ((int)$char['world_id'] === 3) {
+        // Solaris - read from tiles_solaris
+        $tileStmt = $pdo->prepare("SELECT type FROM tiles_solaris WHERE x = ? AND y = ?");
+        $tileStmt->execute([$targetX, $targetY]);
+    } elseif ((int)$char['world_id'] === 5) {
+        // Glaciem - read from tiles_glaciem
+        $tileStmt = $pdo->prepare("SELECT type FROM tiles_glaciem WHERE x = ? AND y = ?");
+        $tileStmt->execute([$targetX, $targetY]);
+    } else {
+        // Regular worlds - read from map_tiles
+        $tileStmt = $pdo->prepare("SELECT type FROM map_tiles WHERE x = ? AND y = ? AND world_id = ?");
+        $tileStmt->execute([$targetX, $targetY, $char['world_id']]);
+    }
     $targetTile = $tileStmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$targetTile || $targetTile['type'] === 'water' || $targetTile['type'] === 'mountain') {
@@ -661,7 +1173,11 @@ if ($action === 'move') {
                 'enemy_name' => $enemyName,
                 'enemy_level' => $enemyLevel,
                 'enemy_dmg_mult' => $dmgMult,
-                'enemy_heals' => $heals
+                'enemy_heals' => $heals,
+                'skills_used_total' => 0,
+                'skill_used_this_turn' => false,
+                'player_skill_damage_bonus' => 0,
+                'enemy_skill_damage_reduction' => 0
             ];
             
             $pdo->prepare("UPDATE characters SET in_combat = 1, enemy_hp = ?, enemy_max_hp = ?, pos_x = ?, pos_y = ?, energy = ?, steps_buffer = ?, combat_state = ? WHERE id = ?")
@@ -690,12 +1206,24 @@ if ($action === 'move') {
     }
 
     // Fetch new local map tiles for Fog of War update
-    $rangeX = 10; $rangeY = 14;
+    [$rangeX, $rangeY] = getMapViewportRangeByGraphicsPreset($input['graphics_preset'] ?? 'medium');
     $minX = $targetX - $rangeX; $maxX = $targetX + $rangeX;
     $minY = $targetY - $rangeY; $maxY = $targetY + $rangeY;
     
-    $mapStmt = $pdo->prepare("SELECT * FROM map_tiles WHERE world_id = ? AND x BETWEEN ? AND ? AND y BETWEEN ? AND ?");
-    $mapStmt->execute([$char['world_id'], $minX, $maxX, $minY, $maxY]);
+    // Read from appropriate table based on world_id
+    if ((int)$char['world_id'] === 3) {
+        // Solaris
+        $mapStmt = $pdo->prepare("SELECT x, y, type FROM tiles_solaris WHERE x BETWEEN ? AND ? AND y BETWEEN ? AND ?");
+        $mapStmt->execute([$minX, $maxX, $minY, $maxY]);
+    } elseif ((int)$char['world_id'] === 5) {
+        // Glaciem
+        $mapStmt = $pdo->prepare("SELECT x, y, type FROM tiles_glaciem WHERE x BETWEEN ? AND ? AND y BETWEEN ? AND ?");
+        $mapStmt->execute([$minX, $maxX, $minY, $maxY]);
+    } else {
+        // Regular worlds
+        $mapStmt = $pdo->prepare("SELECT * FROM map_tiles WHERE world_id = ? AND x BETWEEN ? AND ? AND y BETWEEN ? AND ?");
+        $mapStmt->execute([$char['world_id'], $minX, $maxX, $minY, $maxY]);
+    }
     $localTiles = $mapStmt->fetchAll(PDO::FETCH_ASSOC);
 
     echo json_encode([
@@ -1047,6 +1575,167 @@ if ($action === 'combat_defend') {
     echo json_encode(['status' => 'success', 'combat_state' => $cState, 'message' => '🛡️ Defensive stance! (-50% damage)']); exit;
 }
 
+if ($action === 'combat_use_skill') {
+    $skillId = (string)($input['skill_id'] ?? '');
+    $selectedSkills = $input['selected_skills'] ?? [];
+    if (!is_array($selectedSkills)) $selectedSkills = [];
+
+    $selectedSkills = array_values(array_unique(array_filter(array_map('strval', $selectedSkills))));
+    $selectedSkills = array_slice($selectedSkills, 0, 4);
+
+    if (!in_array($skillId, $selectedSkills, true)) {
+        echo json_encode(['status' => 'error', 'message' => 'Skill not in your combat loadout.']); exit;
+    }
+
+    $catalogMap = getSkillCatalogMap();
+    if (!isset($catalogMap[$skillId])) {
+        echo json_encode(['status' => 'error', 'message' => 'Unknown skill.']); exit;
+    }
+
+    $skill = $catalogMap[$skillId];
+    $cState = json_decode($char['combat_state'], true);
+    if (!$cState || $cState['turn'] !== 'player') {
+        echo json_encode(['status' => 'error', 'message' => 'Enemy turn!']); exit;
+    }
+    if ($cState['player_ap'] < 1) {
+        echo json_encode(['status' => 'error', 'message' => 'Not enough AP!']); exit;
+    }
+    if (!empty($cState['skill_used_this_turn'])) {
+        echo json_encode(['status' => 'error', 'message' => 'You can use only one skill per round.']); exit;
+    }
+    if ((int)($cState['skills_used_total'] ?? 0) >= 2) {
+        echo json_encode(['status' => 'error', 'message' => 'You can use only 2 skills in one combat.']); exit;
+    }
+
+    $cState['skills_used_total'] = (int)($cState['skills_used_total'] ?? 0) + 1;
+    $cState['skill_used_this_turn'] = true;
+    $cState['player_ap'] -= 1;
+
+    $log = 'Skill used: ' . $skill['name'] . '. ';
+    $dmg = 0;
+
+    if ($skill['effect_kind'] === 'heal') {
+        $heal = min((int)$skill['power'], max(0, (int)$char['max_hp'] - (int)$char['hp']));
+        $char['hp'] += $heal;
+        $log .= "You restore {$heal} HP.";
+    } elseif ($skill['effect_kind'] === 'buff_attack') {
+        $bonus = ((int)$skill['power']) / 100;
+        $cState['player_skill_damage_bonus'] = min(0.9, (float)($cState['player_skill_damage_bonus'] ?? 0) + $bonus);
+        $log .= 'Your attacks become stronger.';
+    } elseif ($skill['effect_kind'] === 'buff_defense') {
+        $cState['is_defending'] = true;
+        $heal = min((int)floor($skill['power'] / 3), max(0, (int)$char['max_hp'] - (int)$char['hp']));
+        if ($heal > 0) $char['hp'] += $heal;
+        $log .= 'You gain a defensive stance.';
+    } else {
+        $invStmt = $pdo->prepare("SELECT items.power FROM inventory JOIN items ON inventory.item_id = items.id WHERE character_id = ? AND is_equipped = 1 AND items.type = 'weapon'");
+        $invStmt->execute([$charId]);
+        $weaponDmg = (int)($invStmt->fetchColumn() ?: 0);
+
+        $base = rand(max(6, (int)$skill['power'] - 4), (int)$skill['power'] + 4);
+        $bonusMult = 1 + (float)($cState['player_skill_damage_bonus'] ?? 0);
+        $dmg = (int)round(($base + (int)$char['base_attack'] + $weaponDmg) * $bonusMult);
+        $char['enemy_hp'] -= $dmg;
+        $log .= "You deal {$dmg} skill damage!";
+
+        if ($skill['effect_kind'] === 'debuff_enemy') {
+            $debuff = min(0.75, (float)($cState['enemy_skill_damage_reduction'] ?? 0) + ((int)$skill['power'] / 100));
+            $cState['enemy_skill_damage_reduction'] = $debuff;
+            $log .= ' Enemy damage is reduced.';
+        }
+    }
+
+    $win = false;
+    $tutorialFinishedNow = false;
+    $xp = 0;
+    $goldReward = 0;
+    $dropItem = null;
+
+    if ($char['enemy_hp'] <= 0) {
+        $win = true;
+        $xp = rand(15, 25);
+
+        $enemyType = $cState['enemy_type'] ?? 'standard';
+        if ($enemyType === 'green') { $goldReward = rand(10, 20); }
+        elseif ($enemyType === 'yellow') { $goldReward = rand(20, 35); }
+        elseif ($enemyType === 'orange') { $goldReward = rand(40, 80); }
+        elseif ($enemyType === 'red') { $goldReward = rand(100, 200); }
+        else { $goldReward = rand(5, 12); }
+
+        $dropId = 0;
+        $dropChance = 0;
+        if ($enemyType === 'standard') { $dropId = 20; $dropChance = 100; }
+        elseif ($enemyType === 'green') { $dropId = 21; $dropChance = 45; }
+        elseif ($enemyType === 'yellow') { $dropId = 22; $dropChance = 40; }
+        elseif ($enemyType === 'orange') { $dropId = 23; $dropChance = 35; }
+        elseif ($enemyType === 'red') { $dropId = 24; $dropChance = 30; }
+
+        if ($dropId > 0 && rand(1, 100) <= $dropChance) {
+            $stmt = $pdo->prepare("SELECT name, price FROM items WHERE id = ?");
+            $stmt->execute([$dropId]);
+            $itemData = $stmt->fetch(PDO::FETCH_ASSOC);
+            $scaledValue = (int)$itemData['price'];
+            $pdo->prepare("INSERT INTO inventory (character_id, item_id, quantity, item_value) VALUES (?, ?, 1, ?) ON DUPLICATE KEY UPDATE quantity = quantity + 1, item_value = GREATEST(item_value, ?)")->execute([$charId, $dropId, $scaledValue, $scaledValue]);
+            $dropItem = $itemData['name'];
+            $log .= " Found loot: {$dropItem}!";
+        }
+
+        $char['xp'] += $xp;
+        $char['gold'] += $goldReward;
+        $char['in_combat'] = 0;
+
+        $log .= " (+{$xp} XP, +{$goldReward} coins)";
+
+        if ($char['world_id'] == 1 && $char['tutorial_completed'] == 0) {
+            $char['gold'] += 50;
+            $pdo->prepare("UPDATE characters SET tutorial_completed = 1 WHERE id = ?")->execute([$charId]);
+            $char['tutorial_completed'] = 1;
+            $tutorialFinishedNow = true;
+            $log .= ' VICTORY! Tutorial Completed!';
+        } else {
+            if ($char['xp'] >= $char['max_xp']) {
+                $char['level']++;
+                $char['xp'] = 0;
+                $char['max_xp'] *= 1.2;
+                $char['hp'] = $char['max_hp'];
+                $char['stat_points'] += 3;
+                $log .= ' VICTORY! LEVEL UP!';
+                
+                if ($char['level'] % 5 === 0) {
+                    $log .= ' New skill unlock slot available!';
+                }
+            } else {
+                $log .= ' VICTORY!';
+            }
+        }
+
+        $cState = null;
+    } else {
+        if ($cState['player_ap'] <= 0) {
+            $cState['turn'] = 'enemy';
+            $cState['enemy_ap'] = 2;
+        }
+    }
+
+    $pdo->prepare("UPDATE characters SET hp=?, enemy_hp=?, xp=?, max_xp=?, level=?, max_hp=?, stat_points=?, gold=?, in_combat=?, combat_state=? WHERE id=?")
+        ->execute([$char['hp'], max(0, (int)$char['enemy_hp']), $char['xp'], $char['max_xp'], $char['level'], $char['max_hp'], $char['stat_points'], $char['gold'], $char['in_combat'], json_encode($cState), $charId]);
+
+    echo json_encode([
+        'status' => 'success',
+        'enemy_hp' => max(0, (int)$char['enemy_hp']),
+        'hp' => (int)$char['hp'],
+        'dmg_dealt' => $dmg,
+        'log' => $log,
+        'gold' => $char['gold'],
+        'win' => $win,
+        'combat_state' => $cState,
+        'tutorial_finished' => $tutorialFinishedNow,
+        'xp_gain' => $xp,
+        'gold_gain' => $goldReward,
+        'loot' => $dropItem
+    ]); exit;
+}
+
 if ($action === 'combat_attack') {
     $cState = json_decode($char['combat_state'], true);
     if ($cState['player_ap'] < 2) { echo json_encode(['status' => 'error', 'message' => 'Attack requires 2 AP!']); exit; }
@@ -1061,6 +1750,8 @@ if ($action === 'combat_attack') {
     $weaponDmg = $invStmt->fetchColumn() ?: 0;
     
     $dmg = rand(10, 15) + $char['base_attack'] + $weaponDmg;
+    $bonusMult = 1 + (float)($cState['player_skill_damage_bonus'] ?? 0);
+    $dmg = (int)round($dmg * $bonusMult);
     $char['enemy_hp'] -= $dmg;
     $cState['player_ap'] = 0; 
     
@@ -1138,6 +1829,10 @@ if ($action === 'combat_attack') {
                 $char['hp'] = $char['max_hp'];
                 $char['stat_points'] += 3; // Grant 3 stat points
                 $log .= " VICTORY! LEVEL UP!";
+                
+                if ($char['level'] % 5 === 0) {
+                    $log .= " New skill unlock slot available!";
+                }
             } else {
                 $log .= " VICTORY!";
             }
@@ -1256,6 +1951,11 @@ if ($action === 'enemy_turn') {
             
             $totalDefense = (int)($char['base_defense'] ?? 0) + $armorPower;
             $dmg = max(1, $dmg - $totalDefense);
+
+            $enemySkillReduction = (float)($cState['enemy_skill_damage_reduction'] ?? 0);
+            if ($enemySkillReduction > 0) {
+                $dmg = max(1, (int)ceil($dmg * max(0.2, (1 - $enemySkillReduction))));
+            }
             
             if (!empty($cState['is_defending'])) {
                 $dmg = ceil($dmg * 0.5);
@@ -1283,7 +1983,7 @@ if ($action === 'enemy_turn') {
         } else { $cState['enemy_ap'] = 0; }
     }
     
-    $cState['turn'] = 'player'; $cState['player_ap'] = 2; $cState['is_defending'] = false; 
+    $cState['turn'] = 'player'; $cState['player_ap'] = 2; $cState['is_defending'] = false; $cState['skill_used_this_turn'] = false;
     $died = ($char['hp'] <= 0); if ($died) { $char['hp'] = 0; $cState = NULL; }
     $pdo->prepare("UPDATE characters SET hp=?, enemy_hp=?, combat_state=? WHERE id=?")->execute([$char['hp'], $char['enemy_hp'], json_encode($cState), $charId]);
     echo json_encode(['status'=>'success', 'hp'=>$char['hp'], 'enemy_hp'=>$char['enemy_hp'], 'log'=>$log, 'combat_state'=>$cState, 'player_died'=>$died, 'actions' => $actions_performed]); exit;
@@ -1840,6 +2540,146 @@ function generateRandomDailyChallenge($pdo, $charId) {
 if ($action === 'get_daily_challenge') {
     // TODO: Implement daily challenges if needed
     echo json_encode(['status' => 'error', 'message' => 'Not implemented']); exit;
+}
+
+// --- PLANET TELEPORTATION ---
+if ($action === 'teleport_planet') {
+    $planetName = $input['planet_name'] ?? '';
+    $cost = (int)($input['cost'] ?? 0); // Cost in copper
+    
+    // Planet-specific requirements
+    $planetRequirements = [
+        'Terra' => ['min_level' => 0, 'cost_copper' => 0],    // Return to last multi-player world
+        'Glaciem' => ['min_level' => 15, 'cost_copper' => 1500],   // 15 Silver = 1500 copper, level 15
+        'Solaris' => ['min_level' => 30, 'cost_copper' => 10000]   // 1 Gold = 10000 copper, level 30
+    ];
+    
+    if (!isset($planetRequirements[$planetName])) {
+        echo json_encode(['status' => 'error', 'message' => 'Unknown planet.']); exit;
+    }
+    
+    $req = $planetRequirements[$planetName];
+    
+    // Check level requirement
+    if ($char['level'] < $req['min_level']) {
+        echo json_encode(['status' => 'error', 'message' => "You need level {$req['min_level']} to travel to {$planetName}."]); exit;
+    }
+    
+    // Check cost and deduct if needed
+    if ($req['cost_copper'] > 0) {
+        // Check if player has enough gold
+        if ($char['gold'] < $req['cost_copper']) {
+            echo json_encode(['status' => 'error', 'message' => 'Not enough coins! Need ' . $req['cost_copper'] . ' copper.']); exit;
+        }
+        
+        // Deduct cost from gold
+        $newGold = $char['gold'] - $req['cost_copper'];
+        $pdo->prepare("UPDATE characters SET gold = ? WHERE id = ?")->execute([$newGold, $charId]);
+    }
+    
+    // Determine target world ID based on planet
+    if ($planetName === 'Terra') {
+        // TERRA: Return to last visited multi-player world (not a planet)
+        // Check if player has saved position on any valid multi-player world (exclude planets)
+        $stmt = $pdo->prepare("SELECT sp.world_id, sp.pos_x, sp.pos_y FROM saved_positions sp\n            JOIN worlds w ON w.id = sp.world_id\n            WHERE sp.character_id = ? AND sp.world_id NOT IN (3, 5)\n              AND EXISTS (SELECT 1 FROM map_tiles m WHERE m.world_id = sp.world_id LIMIT 1)\n            ORDER BY sp.updated_at DESC LIMIT 1");
+        $stmt->execute([$charId]);
+        $savedWorld = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($savedWorld) {
+            // Return to last known multi-player world
+            $newWorldId = $savedWorld['world_id'];
+            $newX = $savedWorld['pos_x'];
+            $newY = $savedWorld['pos_y'];
+        } else {
+            // No saved world - find any multi-player world with tiles and spawn at capital
+            $stmt = $pdo->prepare("
+                SELECT w.id FROM worlds w
+                WHERE w.id NOT IN (3, 5) AND EXISTS (
+                    SELECT 1 FROM map_tiles m WHERE m.world_id = w.id LIMIT 1
+                )
+                LIMIT 1
+            ");
+            $stmt->execute();
+            $world = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$world) {
+                echo json_encode(['status' => 'error', 'message' => 'No multi-player worlds available.']); exit;
+            }
+            
+            $newWorldId = $world['id'];
+            
+            // Spawn at city_capital
+            $stmt = $pdo->prepare("SELECT x, y FROM map_tiles WHERE world_id = ? AND type = 'city_capital' LIMIT 1");
+            $stmt->execute([$newWorldId]);
+            $cityPos = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($cityPos) {
+                $newX = $cityPos['x'];
+                $newY = $cityPos['y'];
+            } else {
+                $newX = 10;
+                $newY = 10;
+            }
+        }
+    } else {
+        // SOLARIS or GLACIEM: Use planet-specific world ID
+        $planetMap = [
+            'Solaris' => 3,
+            'Glaciem' => 5
+        ];
+        
+        if (!isset($planetMap[$planetName])) {
+            echo json_encode(['status' => 'error', 'message' => 'Unknown planet.']); exit;
+        }
+        
+        $newWorldId = $planetMap[$planetName];
+        
+        // Get saved position for this planet
+        $stmt = $pdo->prepare("SELECT pos_x, pos_y FROM saved_positions WHERE character_id = ? AND world_id = ?");
+        $stmt->execute([$charId, $newWorldId]);
+        $savedPos = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($savedPos) {
+            // Return to last known position on this planet
+            $newX = $savedPos['pos_x'];
+            $newY = $savedPos['pos_y'];
+        } else {
+            // First time on this planet - determine spawn location
+            if ($newWorldId === 3) {
+                // Solaris - spawn at city_capital from tiles_solaris
+                $stmt = $pdo->prepare("SELECT x, y FROM tiles_solaris WHERE type = 'city_capital' LIMIT 1");
+                $stmt->execute();
+                $cityPos = $stmt->fetch(PDO::FETCH_ASSOC);
+                $newX = $cityPos ? $cityPos['x'] : 250;
+                $newY = $cityPos ? $cityPos['y'] : 500;
+            } elseif ($newWorldId === 5) {
+                // Glaciem - spawn at city_capital from tiles_glaciem
+                $stmt = $pdo->prepare("SELECT x, y FROM tiles_glaciem WHERE type = 'city_capital' LIMIT 1");
+                $stmt->execute();
+                $cityPos = $stmt->fetch(PDO::FETCH_ASSOC);
+                $newX = $cityPos ? $cityPos['x'] : 250;
+                $newY = $cityPos ? $cityPos['y'] : 500;
+            }
+        }
+    }
+    
+    // Ensure world exists
+    $stmt = $pdo->prepare("SELECT id FROM worlds WHERE id = ?");
+    $stmt->execute([$newWorldId]);
+    if (!$stmt->fetch()) {
+        echo json_encode(['status' => 'error', 'message' => 'World does not exist.']); exit;
+    }
+    
+    // Update character world and position
+    $stmt = $pdo->prepare("UPDATE characters SET world_id = ?, pos_x = ?, pos_y = ? WHERE id = ?");
+    $stmt->execute([$newWorldId, $newX, $newY, $charId]);
+    
+    // Save position for future returns to this world (updated_at will auto-update)
+    $stmt = $pdo->prepare("INSERT INTO saved_positions (character_id, world_id, pos_x, pos_y) VALUES (?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE pos_x = VALUES(pos_x), pos_y = VALUES(pos_y), updated_at = CURRENT_TIMESTAMP");
+    $stmt->execute([$charId, $newWorldId, $newX, $newY]);
+    
+    echo json_encode(['status' => 'success', 'message' => 'Traveled to ' . $planetName, 'world_id' => $newWorldId, 'pos_x' => $newX, 'pos_y' => $newY]); exit;
 }
 
 ?>

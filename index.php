@@ -460,6 +460,8 @@ header('Expires: 0');
             display: flex;
             justify-content: center;
             margin: 0 auto;
+            position: relative;
+            z-index: 1500;
         }
         #combat-log {
             width: min(1100px, 100%);
@@ -539,9 +541,50 @@ header('Expires: 0');
             color: #ffeaa7;
         }
 
+        /* Kontener na przyciski w prawym gornym rogu */
+        #top-right-buttons {
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            z-index: 1600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        #game-layout:not(.panel-collapsed) #top-right-buttons {
+            right: 20px;
+        }
+        #game-layout.panel-collapsed #top-right-buttons {
+            right: 20px;
+        }
+
+        /* Przycisk zmiany planety */
+        #planet-change-btn {
+            position: static;
+            padding: 10px 20px;
+            background: linear-gradient(180deg, #8b6f47 0%, #6b5737 50%, #4a3d28 100%);
+            color: #e0e0e0;
+            font-weight: bold;
+            border: 2px solid #5c4a35;
+            border-radius: 2px;
+            cursor: pointer;
+            z-index: 1599;
+            display: none;
+            box-shadow: 0 3px 0 #3a2820, 0 5px 10px rgba(255,215,0,0.2);
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+            transition: transform 0.1s;
+            image-rendering: pixelated;
+        }
+        #planet-change-btn:hover {
+            background: linear-gradient(180deg, #9b7f57 0%, #7b6747 50%, #5a4d38 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 0 #3a2820, 0 6px 12px rgba(255,215,0,0.3);
+            border-color: #ffd700;
+        }
+
         /* Przycisk zmiany świata */
         #world-btn {
-            position: absolute; top: 10px; right: 20px; 
+            position: static;
             padding: 10px 20px;
             background: linear-gradient(180deg, #2d8b57 0%, #1f6b3f 50%, #164d2e 100%);
             color: #e8f5e9;
@@ -1045,6 +1088,17 @@ header('Expires: 0');
                 z-index: 3100;
             }
 
+            #planet-change-btn {
+                top: auto;
+                bottom: 55px;
+                right: auto;
+                left: 20px;
+                position: fixed;
+                z-index: 3100;
+                padding: 5px 8px;
+                font-size: 10px;
+            }
+
             #shop-btn {
                 bottom: 100px; /* Move up to not be covered by mobile panel toggle */
                 padding: 6px 12px;
@@ -1189,6 +1243,16 @@ header('Expires: 0');
                 bottom: auto !important;
                 position: fixed;
                 z-index: 3100;
+            }
+            #planet-change-btn {
+                top: 50px !important;
+                left: 10px !important;
+                right: auto !important;
+                bottom: auto !important;
+                position: fixed;
+                z-index: 3100;
+                padding: 5px 8px;
+                font-size: 10px;
             }
             #shop-btn {
                 left: 50% !important;
@@ -1368,6 +1432,152 @@ header('Expires: 0');
                 z-index: 10001;
             }
         }
+
+        @keyframes cosmosScroll {
+            from { background-position: 0 0; }
+            to { background-position: -2000px 0; }
+        }
+
+        /* --- PLANETS MODAL --- */
+        .planets-container {
+            position: relative;
+            width: 90%;
+            max-width: 1000px;
+            max-height: 90vh;
+            background: linear-gradient(135deg, rgba(20,15,10,0.98), rgba(30,20,15,1.0));
+            background-image: url('assets/Planets/Space Background.png');
+            background-repeat: repeat-x;
+            background-size: auto 100%;
+            animation: cosmosScroll 80s linear infinite;
+            border: 2px solid #5c4a35;
+            border-radius: 10px;
+            padding: 30px;
+            overflow-y: auto;
+            box-shadow: 0 0 30px rgba(255, 215, 0, 0.2);
+            z-index: 10051;
+        }
+
+        .close-planets-btn {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: #5c4a35;
+            border: none;
+            color: #e0e0e0;
+            font-size: 24px;
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .close-planets-btn:hover {
+            background: #8b6f47;
+            transform: rotate(90deg);
+        }
+
+        .planets-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .planet-card {
+            background: rgba(30, 25, 20, 0.8);
+            border: 2px solid #8b6f47;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            overflow: hidden;
+        }
+
+        .planet-card:hover:not(.locked) {
+            transform: translateY(-5px);
+            border-color: #ffd700;
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.4);
+        }
+
+        .planet-card.locked {
+            opacity: 0.7;
+        }
+
+        .planet-gif {
+            width: 100%;
+            height: 150px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 5px;
+            margin-bottom: 15px;
+            overflow: hidden;
+        }
+
+        .planet-gif img {
+            max-width: 140px;
+            max-height: 140px;
+            image-rendering: pixelated;
+        }
+
+        .planet-card h2 {
+            color: #ffd700;
+            margin: 10px 0 5px 0;
+            font-size: 20px;
+        }
+
+        .planet-info {
+            color: #c9a875;
+            font-size: 14px;
+            margin: 8px 0;
+            min-height: 40px;
+        }
+
+        .planet-level {
+            color: #888;
+            font-size: 12px;
+            margin: 8px 0;
+            font-style: italic;
+        }
+
+        .planet-btn {
+            background: #8b6f47;
+            color: #e0e0e0;
+            border: 1px solid #5c4a35;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+            width: 100%;
+        }
+
+        .planet-btn:not(.locked):hover {
+            background: #a88860;
+            border-color: #ffd700;
+            color: #ffd700;
+        }
+
+        .planet-btn.locked {
+            background: #5c4a35;
+            color: #666;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        @media (max-width: 768px) {
+            .planets-container {
+                width: 95%;
+                padding: 20px;
+            }
+            .planets-grid {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1472,9 +1682,32 @@ header('Expires: 0');
                 <span style="color:#c9a875;">Sounds</span>
             </div>
             <input type="range" min="0" max="1" step="0.05" value="0.3" oninput="setSfxVolume(this.value)" style="width:100%;">
+
+            <div style="display:flex; align-items:center; justify-content:center; gap:10px; margin-top:15px; margin-bottom:5px;">
+                <span style="color:#c9a875;">Graphics Preset</span>
+            </div>
+            <select id="graphics-preset-select" onchange="setGraphicsPreset(this.value)" style="width:100%; padding:6px; background:rgba(20,15,10,0.9); border:2px solid #5c4a35; color:#f4d58d; border-radius:3px; font-family: inherit;">
+                <option value="auto">Auto (Recommended)</option>
+                <option value="very_low">Very Low (Ultra Performance)</option>
+                <option value="low">Low (Performance)</option>
+                <option value="medium">Medium (Balanced)</option>
+                <option value="high">High (Quality)</option>
+            </select>
+            <div id="graphics-preset-desc" style="color:#8b7355; font-size:11px; margin-top:6px; text-align:left;">Auto: selected profile based on your device.</div>
         </div>
 
         <div class="settings-actions">
+            <button class="combat-btn" style="width:100%;" onclick="toggleShortcutHelp()">Keyboard Shortcuts</button>
+
+            <div id="keyboard-shortcuts-help" style="display:none; margin-top:8px; text-align:left; background:linear-gradient(135deg, rgba(20,15,10,0.98), rgba(30,20,15,1.0)); border:2px solid #5c4a35; border-radius:4px; padding:10px; color:#d8c7a5; font-size:12px; line-height:1.5;">
+                <div style="font-weight:bold; color:#f4d58d; margin-bottom:6px;">PC Shortcuts</div>
+                <div><strong>Enter</strong> – login/register, create character, open city market (when standing in city/village).</div>
+                <div><strong>Esc</strong> – close active window; if no window is open, open Settings.</div>
+                <div><strong>A</strong> – combat attack, <strong>D</strong> – combat defend.</div>
+                <div><strong>1-4</strong> – use combat skill from loadout slot 1 to 4.</div>
+                <div><strong>Tab</strong> – collapse/expand right panel.</div>
+            </div>
+
             <button class="combat-btn" style="width:100%; filter: hue-rotate(180deg);" onclick="changeCharacter()">Change Character</button>
             <button class="combat-btn" style="width:100%; filter: hue-rotate(70deg);" onclick="location.href='credits.php'">Credits</button>
             <button class="combat-btn" style="width:100%; filter: hue-rotate(350deg) brightness(1.1);" onclick="handleLogout()">Logout</button>
@@ -1523,7 +1756,10 @@ header('Expires: 0');
             </div>
         </div>
 
-        <button id="world-btn" style="display:none;" onclick="showWorldSelection()">Select World 🌐</button>
+        <div id="top-right-buttons">
+            <button id="planet-change-btn" onclick="openPlanetChangeModal()">🌍 Change Planet</button>
+            <button id="world-btn" style="display:none;" onclick="showWorldSelection()">Select World 🌐</button>
+        </div>
         <button id="shop-btn" style="display:none; position:absolute; bottom:20px; left:50%; transform:translateX(-50%); z-index:1600;" onclick="openCityMenu()">🏰 Enter Market</button>
         <button id="expand-panel-btn" style="display:none; position:absolute; top:55px; right:10px; z-index:1600; background:linear-gradient(135deg, rgba(58,42,26,0.9), rgba(45,31,18,0.95)); color:#f4d58d; border:2px solid #61491f; padding:8px 12px; cursor:pointer; font-weight:bold; border-radius:2px; box-shadow: 0 2px 6px rgba(0,0,0,0.6); text-shadow: 1px 1px 2px rgba(0,0,0,0.8);" onclick="toggleRightPanel()" title="Show Panel (Tab)">«</button>
 
@@ -1643,13 +1879,35 @@ header('Expires: 0');
     </div>
     <div class="combat-arena-shell" id="combat-arena-shell"></div>
     <div id="combat-controls" style="margin-top:20px; display:flex; gap:10px; justify-content: center;">
+        <button class="combat-btn" style="background:#7b5cff;" onclick="openCombatSkillsModal()">✨ Skills</button>
         <button class="combat-btn" style="background:#4caf50; display:flex; align-items:center; gap:5px;" onclick="handleCombatDefend()">
             <img src="assets/ui/shield.png" style="width:20px; height:20px;"> Defend (1AP)
         </button>
         <button class="combat-btn" style="background:#2196f3;" onclick="useItem(7)">🧪 Potion (2AP)</button>
         <button class="combat-btn" style="background:#ff9800;" onclick="useItem(8)">🩹 Bandage (2AP)</button>
     </div>
+    <div id="combat-skill-quickbar" style="margin-top:10px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap;"></div>
     <p id="combat-log" style="color:#c9a875; margin-top:15px; font-style:italic; height:20px; text-shadow: 1px 1px 2px rgba(0,0,0,0.9);">Waiting...</p>
+</div>
+
+<div id="combat-skills-modal" class="modal" style="display:none;">
+    <div class="modal-panel" style="background:#1b1b1b; padding:16px; border-radius:8px; width:360px; max-height:65vh; overflow:auto; color:#fff; border:1px solid #4b3f63;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <h3 style="margin:0; color:#d7c4ff;">Choose Skill</h3>
+            <button class="icon-btn" onclick="closeCombatSkillsModal()"><img src="assets/ui/ex.png" alt="Close"></button>
+        </div>
+        <div id="combat-skills-body"></div>
+    </div>
+</div>
+
+<div id="skill-selection-modal" class="modal" style="display:none;">
+    <div class="modal-panel" style="background:#1b1b1b; padding:16px; border-radius:8px; width:560px; max-height:75vh; overflow:auto; color:#fff; border:1px solid #61491f;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <h3 style="margin:0; color:#ffeaa7;">Select Skills (Attributes)</h3>
+            <button class="icon-btn" onclick="closeSkillSelectionModal()"><img src="assets/ui/ex.png" alt="Close"></button>
+        </div>
+        <div id="skill-selection-body"></div>
+    </div>
 </div>
 
 <div id="death-screen" class="modal">
@@ -1719,6 +1977,37 @@ header('Expires: 0');
 </div>
 
 <button id="mobile-panel-toggle" onclick="toggleRightPanel()">▼</button>
+
+<div id="planet-change-modal" class="modal" style="display:none;">
+    <div class="planets-container">
+        <button class="close-planets-btn" onclick="closePlanetChangeModal()">✕</button>
+        <h1 style="color:#ffd700; margin-bottom:30px; text-align:center;">Travel Between Worlds</h1>
+        <p style="color:#c9a875; text-align:center; margin-bottom:20px; font-size:14px;">Cost: <span style="color:#fff;">15 Silver (1500 Copper)</span></p>
+        <div class="planets-grid">
+            <div class="planet-card" data-planet="Terra">
+                <div class="planet-gif"><img src="assets/Planets/Terra.gif" alt="Terra"></div>
+                <h2>Terra</h2>
+                <p class="planet-info">The ancestral home of mankind. Lush and thriving.</p>
+                <p class="planet-level">Your Origin</p>
+                <button class="planet-btn" onclick="purchasePlanetTravel('Terra')">Travel Here</button>
+            </div>
+            <div class="planet-card" data-planet="Glaciem">
+                <div class="planet-gif"><img src="assets/Planets/Glaciem.gif" alt="Glaciem"></div>
+                <h2>Glaciem</h2>
+                <p class="planet-info">An icy frozen world of eternal winter.</p>
+                <p class="planet-level" id="glaciem-cost-level">Cost: 1500 Copper</p>
+                <button class="planet-btn" id="glaciem-travel-btn" onclick="purchasePlanetTravel('Glaciem')">Travel Here</button>
+            </div>
+            <div class="planet-card" data-planet="Solaris">
+                <div class="planet-gif"><img src="assets/Planets/Solaris.gif" alt="Solaris"></div>
+                <h2>Solaris</h2>
+                <p class="planet-info">A vast desert planet of sand and secrets.</p>
+                <p class="planet-level" id="solaris-cost-level">Cost: 1500 Copper</p>
+                <button class="planet-btn" id="solaris-travel-btn" onclick="purchasePlanetTravel('Solaris')">Travel Here</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <script src="game.js?v=<?php echo $assetVersion; ?>"></script>
 </body>

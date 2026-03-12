@@ -93,6 +93,185 @@ let pvpPollInFlight = false;
 let pvpLastActionAt = 0;
 const PVP_ACTION_COOLDOWN_MS = 250;
 
+let skillCatalog = [];
+let unlockedSkillIds = [];
+let selectedSkillIds = [];
+let lastSkillUnlockToastLevel = 0;
+let skillUnlockMenuOpen = false;
+let unlockableSkillIds = [];
+let skillResetCostCopper = 0;
+
+const GRAPHICS_PRESET_KEY = 'rpg_graphics_preset';
+const GRAPHICS_PRESETS = {
+    very_low: {
+        label: 'Very Low',
+        windEnabled: false,
+        windDelayMin: 600,
+        windDelayMax: 1200,
+        windBurstMin: 0,
+        windBurstMax: 0,
+        smokeParticlesPerCity: 0,
+        combatParticleCount: 0,
+        floatingDamageEnabled: false,
+        dayNightEnabled: false,
+        multiplayerPollMs: 4000,
+        animationSpeedMs: 220,
+        otherPlayersAnimEnabled: false
+    },
+    low: {
+        label: 'Low',
+        windEnabled: false,
+        windDelayMin: 450,
+        windDelayMax: 950,
+        windBurstMin: 0,
+        windBurstMax: 0,
+        smokeParticlesPerCity: 0,
+        combatParticleCount: 0,
+        floatingDamageEnabled: false,
+        dayNightEnabled: false,
+        multiplayerPollMs: 3000,
+        animationSpeedMs: 170,
+        otherPlayersAnimEnabled: false
+    },
+    medium: {
+        label: 'Medium',
+        windEnabled: true,
+        windDelayMin: 280,
+        windDelayMax: 750,
+        windBurstMin: 1,
+        windBurstMax: 3,
+        smokeParticlesPerCity: 1,
+        combatParticleCount: 6,
+        floatingDamageEnabled: true,
+        dayNightEnabled: true,
+        multiplayerPollMs: 2000,
+        animationSpeedMs: 125,
+        otherPlayersAnimEnabled: true
+    },
+    high: {
+        label: 'High',
+        windEnabled: true,
+        windDelayMin: 150,
+        windDelayMax: 500,
+        windBurstMin: 2,
+        windBurstMax: 7,
+        smokeParticlesPerCity: 3,
+        combatParticleCount: 12,
+        floatingDamageEnabled: true,
+        dayNightEnabled: true,
+        multiplayerPollMs: 1500,
+        animationSpeedMs: 100,
+        otherPlayersAnimEnabled: true
+    }
+};
+
+let graphicsPreset = 'high';
+
+function isValidGraphicsPreset(value) {
+    return value === 'auto' || Boolean(GRAPHICS_PRESETS[value]);
+}
+
+function detectAutoGraphicsPreset() {
+    const cores = parseInt(navigator.hardwareConcurrency || 4, 10);
+    const memory = parseFloat(navigator.deviceMemory || 4);
+    const dpr = Math.max(1, parseFloat(window.devicePixelRatio || 1));
+    const pixels = Math.max(1, window.innerWidth * window.innerHeight * dpr * dpr);
+
+    if (isMobile || cores <= 2 || memory <= 2 || pixels > 4200000) return 'very_low';
+    if (cores <= 4 || memory <= 4 || pixels > 2800000) return 'low';
+    if (cores <= 6 || memory <= 8) return 'medium';
+    return 'high';
+}
+
+function resolveGraphicsPresetName(preset = graphicsPreset) {
+    if (preset === 'auto') return detectAutoGraphicsPreset();
+    if (GRAPHICS_PRESETS[preset]) return preset;
+    return 'high';
+}
+
+function getGraphicsConfig() {
+    return GRAPHICS_PRESETS[resolveGraphicsPresetName()] || GRAPHICS_PRESETS.high;
+}
+
+function getGraphicsPresetDescription() {
+    const cfg = getGraphicsConfig();
+    const resolved = resolveGraphicsPresetName();
+    if (graphicsPreset === 'auto') {
+        const resolvedLabel = GRAPHICS_PRESETS[resolved]?.label || resolved;
+        return `Auto: selected ${resolvedLabel} for this device.`;
+    }
+    if (graphicsPreset === 'very_low') {
+        return `${cfg.label}: minimum effects, reduced render distance, maximum performance.`;
+    }
+    if (graphicsPreset === 'low') {
+        return `${cfg.label}: minimal effects, slower multiplayer updates, best performance.`;
+    }
+    if (graphicsPreset === 'medium') {
+        return `${cfg.label}: balanced quality and performance.`;
+    }
+    return `${cfg.label}: full effects and smoothest visuals.`;
+}
+
+function loadGraphicsPreset() {
+    try {
+        const saved = localStorage.getItem(GRAPHICS_PRESET_KEY);
+        if (saved && isValidGraphicsPreset(saved)) {
+            graphicsPreset = saved;
+        }
+    } catch {}
+}
+
+function stopWindEffect() {
+    windActive = false;
+    if (windTimer) {
+        clearTimeout(windTimer);
+        windTimer = null;
+    }
+    const layer = document.getElementById('wind-layer');
+    if (layer) {
+        layer.querySelectorAll('.wind-streak').forEach(el => el.remove());
+    }
+}
+
+function applyGraphicsPreset(preset, save = true) {
+    if (!isValidGraphicsPreset(preset)) return;
+    graphicsPreset = preset;
+
+    if (save) {
+        try {
+            localStorage.setItem(GRAPHICS_PRESET_KEY, graphicsPreset);
+        } catch {}
+    }
+
+    const cfg = getGraphicsConfig();
+    if (cfg.windEnabled) startWindEffect();
+    else stopWindEffect();
+
+    if ((cfg.smokeParticlesPerCity || 0) <= 0) {
+        document.querySelectorAll('.smoke-particle').forEach(el => el.remove());
+    }
+
+    updateDayNightCycle();
+
+    if (animationInterval) startPlayerAnimation();
+    if (combatAnimInterval) startCombatAnimations();
+    if (updatePlayersInterval) startMultiplayerPolling();
+
+    syncGraphicsSettingsUI();
+}
+
+function setGraphicsPreset(value) {
+    if (!isValidGraphicsPreset(value)) return;
+    applyGraphicsPreset(value, true);
+}
+
+function syncGraphicsSettingsUI() {
+    const select = document.getElementById('graphics-preset-select');
+    if (select) select.value = graphicsPreset;
+    const desc = document.getElementById('graphics-preset-desc');
+    if (desc) desc.innerText = getGraphicsPresetDescription();
+}
+
 function playSoundEffect(category, damageValue = 0) {
     let src = '';
     if (category === 'walk') { src = AUDIO_PATHS.walk[Math.floor(Math.random() * AUDIO_PATHS.walk.length)]; } 
@@ -149,13 +328,18 @@ function startGame() {
         }
     }
     
-    startWindEffect();
+    applyGraphicsPreset(graphicsPreset, false);
     initGame();
     updateDayNightCycle();
     setInterval(updateDayNightCycle, 60000);
 }
 
 function startWindEffect() {
+    const cfg = getGraphicsConfig();
+    if (!cfg.windEnabled) {
+        stopWindEffect();
+        return;
+    }
     if (windActive) return;
     const layer = document.getElementById('wind-layer');
     if (!layer) return;
@@ -164,14 +348,14 @@ function startWindEffect() {
 }
 
 function scheduleWind() {
-    if (!windActive) return;
-    // Wind appears more frequently and at random intervals
-    const delay = 150 + Math.random() * 500;
+    const cfg = getGraphicsConfig();
+    if (!windActive || !cfg.windEnabled) return;
+    const delayRange = Math.max(0, cfg.windDelayMax - cfg.windDelayMin);
+    const delay = cfg.windDelayMin + Math.random() * delayRange;
     windTimer = setTimeout(() => {
-        // More wind streaks per burst (2-7 instead of 1-3)
-        const burstCount = 2 + Math.floor(Math.random() * 6);
+        const burstMax = Math.max(cfg.windBurstMin, cfg.windBurstMax);
+        const burstCount = cfg.windBurstMin + Math.floor(Math.random() * (burstMax - cfg.windBurstMin + 1));
         for (let i = 0; i < burstCount; i++) {
-            // Stagger the creation slightly
             setTimeout(() => createWindStreak(), i * 30);
         }
         scheduleWind();
@@ -179,6 +363,7 @@ function scheduleWind() {
 }
 
 function createWindStreak() {
+    if (!getGraphicsConfig().windEnabled) return;
     const layer = document.getElementById('wind-layer');
     if (!layer || document.body.classList.contains('combat-active')) return;
     const rect = layer.getBoundingClientRect();
@@ -235,10 +420,33 @@ async function initGame() {
             document.getElementById('class-selection').style.display = 'none';
 
             updateLocalState(json.data);
+            selectedSkillIds = loadSelectedSkillsFromStorage();
+            
+            // Ensure player has all skills they should have based on level
+            const ensureSkillsRes = await apiPost('ensure_skills_unlocked');
+            if (ensureSkillsRes.status === 'success' && Array.isArray(ensureSkillsRes.unlocked_skill_ids)) {
+                unlockedSkillIds = ensureSkillsRes.unlocked_skill_ids;
+            }
+            if (ensureSkillsRes.status === 'success' && Array.isArray(ensureSkillsRes.unlockable_skill_ids)) {
+                unlockableSkillIds = ensureSkillsRes.unlockable_skill_ids;
+            }
+            if (ensureSkillsRes.status === 'success' && ensureSkillsRes.reset_cost_copper !== undefined) {
+                skillResetCostCopper = parseInt(ensureSkillsRes.reset_cost_copper, 10) || 0;
+            }
+            
+            // Only load skill catalog if not already loaded (saves a request)
+            if (!Array.isArray(skillCatalog) || skillCatalog.length === 0) {
+                await ensureSkillCatalogLoaded();
+            } else {
+                // Reload unlocked skills to stay in sync with backend
+                await ensureSkillCatalogLoaded();
+            }
+            refreshSelectedSkillsByLevel();
             
             // UI Świata
             document.getElementById('world-info').innerText = json.data.world_name || 'Unknown world';
             updateUI(json.data);
+            maybeNotifySkillUnlock();
             checkTutorialStatus();
 
             if (gameState.in_combat && json.data.combat_state) {
@@ -257,7 +465,8 @@ async function initGame() {
             }
             renderInventory(json.data.inventory);
             checkLifeStatus();
-            
+            updatePlanetChangeButtonVisibility();
+
             // Load daily quest
             setTimeout(() => { loadDailyQuest(); }, 500);
         } else if (json.code === 'world_missing' || json.allow_world_change) {
@@ -275,8 +484,11 @@ async function checkTutorialStatus() {
         if (json.status === 'success') {
             const state = json.data ?? json.state ?? json;
             gameState.tutorial_completed = (state.tutorial_completed == 1 || state.tutorial_completed === true);
+            gameState.world_id = parseInt(state.world_id) || 2;
             const btn = document.getElementById('world-btn');
-            if (btn) btn.style.display = gameState.tutorial_completed ? 'inline-block' : 'none';
+            // Hide world button on planets Solaris (3) and Glaciem (5) since they have no world selection
+            const isOnPlanet = gameState.world_id === 3 || gameState.world_id === 5;
+            if (btn) btn.style.display = (gameState.tutorial_completed && !isOnPlanet) ? 'inline-block' : 'none';
         } else {
             console.warn('get_state failed', json);
         }
@@ -390,6 +602,62 @@ async function apiPost(action, body = {}) {
         return { status: 'error', message: 'Network error' };
     }
 }
+
+function getSkillStorageKey() {
+    const charId = gameState?.character_id || 'default';
+    return `rpg_selected_skills_${charId}`;
+}
+
+function getUnlockedSkillCount() {
+    return unlockedSkillIds.length;
+}
+
+async function ensureSkillCatalogLoaded(forceRefresh = false) {
+    if (!forceRefresh && Array.isArray(skillCatalog) && skillCatalog.length > 0) return true;
+    const res = await apiPost('get_skill_catalog');
+    if (res.status !== 'success' || !Array.isArray(res.skills)) return false;
+    skillCatalog = res.skills;
+    unlockedSkillIds = Array.isArray(res.unlocked_skill_ids) ? res.unlocked_skill_ids : [];
+    unlockableSkillIds = Array.isArray(res.unlockable_skill_ids) ? res.unlockable_skill_ids : [];
+    skillResetCostCopper = parseInt(res.reset_cost_copper || 0, 10) || 0;
+    return true;
+}
+
+function loadSelectedSkillsFromStorage() {
+    try {
+        const raw = localStorage.getItem(getSkillStorageKey());
+        const parsed = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(parsed)) return [];
+        return parsed.filter(v => typeof v === 'string').slice(0, 4);
+    } catch {
+        return [];
+    }
+}
+
+function saveSelectedSkillsToStorage() {
+    localStorage.setItem(getSkillStorageKey(), JSON.stringify(selectedSkillIds.slice(0, 4)));
+}
+
+function refreshSelectedSkillsByLevel() {
+    const unlockedSet = new Set(unlockedSkillIds);
+    selectedSkillIds = selectedSkillIds.filter(id => unlockedSet.has(id)).slice(0, 4);
+    saveSelectedSkillsToStorage();
+}
+
+function getSelectedSkillsDetailed() {
+    if (!Array.isArray(skillCatalog) || skillCatalog.length === 0) return [];
+    const byId = new Map(skillCatalog.map(s => [s.id, s]));
+    return selectedSkillIds.map(id => byId.get(id)).filter(Boolean);
+}
+
+function maybeNotifySkillUnlock() {
+    const level = parseInt(gameState.level || 1, 10);
+    if (level > 0 && level % 5 === 0 && lastSkillUnlockToastLevel !== level) {
+        lastSkillUnlockToastLevel = level;
+        showToast(`🎯 Level ${level}! New skill unlock slot available.`, 'success');
+    }
+}
+
 // Expose single global block for inline handlers — ensure no other block re-exports these later.
 window.showWorldSelection = showWorldSelection;
 window.joinWorld = joinWorld;
@@ -426,10 +694,11 @@ window.selectClass = async function(id) {
 
 
 async function loadAndDrawMap() {
+    const serverPreset = resolveGraphicsPresetName();
     const res = await fetch('api.php', { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'get_map' })
+        body: JSON.stringify({ action: 'get_map', graphics_preset: serverPreset })
     });
     const result = await res.json();
     if (result.tiles) {
@@ -444,6 +713,9 @@ async function loadAndDrawMap() {
 function renderMapTiles(tiles) {
     const mapDiv = document.getElementById('map');
     if (!mapDiv) return;
+    const cfg = getGraphicsConfig();
+    const smokeCount = Math.max(0, parseInt(cfg.smokeParticlesPerCity || 0, 10));
+    const resolvedPreset = resolveGraphicsPresetName();
 
     if (mapDiv.dataset.musicUnlock !== '1') {
         mapDiv.dataset.musicUnlock = '1';
@@ -456,7 +728,18 @@ function renderMapTiles(tiles) {
     mapDiv.querySelectorAll('.tile').forEach(e => e.remove());
     if (!playerMarker.parentNode) mapDiv.appendChild(playerMarker);
 
-    tiles.forEach(t => { 
+    const sourceTiles = Array.isArray(tiles) ? tiles : [];
+    const tilesToRender = (resolvedPreset === 'very_low')
+        ? sourceTiles.filter(t => {
+            const tx = parseInt(t.x, 10);
+            const ty = parseInt(t.y, 10);
+            const dx = Math.abs(tx - parseInt(gameState.x || 0, 10));
+            const dy = Math.abs(ty - parseInt(gameState.y || 0, 10));
+            return dx <= 5 && dy <= 7;
+        })
+        : sourceTiles;
+
+    tilesToRender.forEach(t => { 
         const tile = document.createElement('div');
         tile.className = `tile ${t.type}`;
         
@@ -466,7 +749,7 @@ function renderMapTiles(tiles) {
         if (t.type === 'mountain') posY -= 20; 
         if (t.type === 'city_capital') {
             posY -= 5;
-            for(let i=0; i<3; i++) {
+            for(let i=0; i<smokeCount; i++) {
                 const s = document.createElement('div');
                 s.className = 'smoke-particle';
                 s.style.left = '60px'; s.style.top = '40px'; 
@@ -478,7 +761,7 @@ function renderMapTiles(tiles) {
         }
         if (t.type === 'city_village') {
             posY -= 10; // Moved up by 10px total (5px more than before)
-            for(let i=0; i<3; i++) {
+            for(let i=0; i<smokeCount; i++) {
                 const s = document.createElement('div');
                 s.className = 'smoke-particle';
                 s.style.left = '75px'; s.style.top = '50px'; 
@@ -583,12 +866,14 @@ function setAnimationState(newState) {
 
 function startPlayerAnimation() {
     if (animationInterval) clearInterval(animationInterval);
+    const cfg = getGraphicsConfig();
+    const speedMs = Math.max(60, parseInt(cfg.animationSpeedMs || ANIMATION_SPEED, 10));
     updatePlayerSprite();
     animationInterval = setInterval(() => {
         currentFrameIndex++;
         if (currentFrameIndex >= playerSprites[currentAnimState].length) currentFrameIndex = 0;
         updatePlayerSprite();
-    }, ANIMATION_SPEED);
+    }, speedMs);
 }
 
 function updatePlayerSprite() {
@@ -618,10 +903,11 @@ async function attemptMove(targetX, targetY) {
         }
     }
 
+    const serverPreset = resolveGraphicsPresetName();
     const res = await fetch('api.php', { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'move', x: targetX, y: targetY })
+        body: JSON.stringify({ action: 'move', x: targetX, y: targetY, graphics_preset: serverPreset })
     });
     const result = await res.json();
 
@@ -693,7 +979,7 @@ async function handleInventoryClick(item) {
         }
         return;
     }
-    
+
     // Equipment & Drops - show context menu
     if (item.type === 'weapon' || item.type === 'armor' || item.type === 'drop') {
         showItemMenu(item);
@@ -886,6 +1172,7 @@ function toggleCombatMode(active, currentHp, enemyHp = 0) {
         updateBar('combat-enemy-fill', enemyHp, eMax);
         
         if (!gameState.is_pvp) updateApDisplay();
+        renderCombatSkillQuickbar();
     } else {
         mapDiv.style.display = 'block'; combatScreen.style.display = 'none';
         combatState = null;
@@ -895,6 +1182,7 @@ function toggleCombatMode(active, currentHp, enemyHp = 0) {
         loadAndDrawMap();
         updatePlayerVisuals(gameState.x, gameState.y, true);
         startMultiplayerPolling(); // Resume polling after combat
+        renderCombatSkillQuickbar();
     }
 }
 
@@ -945,10 +1233,36 @@ function renderCombatArena() {
     updateCombatEntity(combatState.enemy_pos, 'enemy', container);
 
     updateApDisplay();
+    renderCombatSkillQuickbar();
     updateCombatCamera();
     
     // Only trigger AI turn if it's PvE
     if (!gameState.is_pvp && combatState.turn === 'enemy' && !isProcessingTurn) setTimeout(handleEnemyTurn, 500);
+}
+
+function renderCombatSkillQuickbar() {
+    const quickbar = document.getElementById('combat-skill-quickbar');
+    if (!quickbar) return;
+
+    if (!inCombatMode || !gameState.in_combat) {
+        quickbar.innerHTML = '';
+        return;
+    }
+
+    const selected = getSelectedSkillsDetailed().slice(0, 4);
+    if (!selected.length) {
+        quickbar.innerHTML = '<div style="font-size:12px; color:#888;">No skills in loadout (configure in Attributes).</div>';
+        return;
+    }
+
+    const isPlayerTurn = !!combatState && combatState.turn === 'player';
+    quickbar.innerHTML = selected.map((s, index) => `
+        <button class="combat-btn" style="margin:0; padding:6px 10px; min-width:120px; display:flex; align-items:center; gap:6px; justify-content:flex-start;" onclick="handleCombatUseSkill('${s.id}')" ${isPlayerTurn ? '' : 'disabled'}>
+            <span style="display:inline-flex; width:18px; height:18px; border-radius:3px; align-items:center; justify-content:center; background:#222; color:#ffeaa7; font-size:11px; font-weight:bold; border:1px solid #5c4a35;">${index + 1}</span>
+            <img src="${s.icon_path}" alt="${escapeHtml(s.name)}" style="width:18px; height:18px; image-rendering:pixelated;">
+            <span style="font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(s.name)}</span>
+        </button>
+    `).join('');
 }
 
 function updateCombatEntity(pos, type, container) {
@@ -1037,11 +1351,13 @@ function animateCombatMove(type, targetPos) {
 
 function startCombatAnimations() {
     if (combatAnimInterval) clearInterval(combatAnimInterval);
+    const cfg = getGraphicsConfig();
+    const speedMs = Math.max(60, parseInt(cfg.animationSpeedMs || ANIMATION_SPEED, 10));
     combatFrameIndex = 0;
     combatAnimInterval = setInterval(() => {
         combatFrameIndex++;
         updateCombatSprites();
-    }, ANIMATION_SPEED);
+    }, speedMs);
 }
 
 function stopCombatAnimations() {
@@ -1209,6 +1525,301 @@ async function useItem(itemId) {
     }
 }
 
+function closeSkillSelectionModal() {
+    const modal = document.getElementById('skill-selection-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+function renderSkillSelectionModal() {
+    const body = document.getElementById('skill-selection-body');
+    if (!body) return;
+
+    const level = parseInt(gameState.level || 1, 10);
+    const shouldHave = Math.min(4, Math.max(0, Math.floor(level / 5)));
+    const unlockedSet = new Set(unlockedSkillIds);
+    const unlockableSet = new Set(unlockableSkillIds);
+    const unlockedCount = getUnlockedSkillCount();
+    const unlocksRemaining = Math.max(0, shouldHave - unlockedCount);
+    const selectedSet = new Set(selectedSkillIds);
+    const lockableSkills = skillCatalog.filter(s => !unlockedSet.has(s.id));
+    const playerClassId = parseInt(gameState.class_id || 0, 10);
+    const canReset = unlockedCount > 0 && (skillResetCostCopper <= 0 || (gameState.gold || 0) >= skillResetCostCopper);
+
+    const getSkillLockReason = (skill) => {
+        if (unlocksRemaining <= 0) return 'No free unlock slots.';
+        if (skill.path_class_id && playerClassId && parseInt(skill.path_class_id, 10) !== playerClassId) {
+            const pathClassName = CLASS_NAMES[parseInt(skill.path_class_id, 10)] || `Class ${skill.path_class_id}`;
+            return `Class specialization: ${pathClassName} only.`;
+        }
+        if (unlockableSet.has(skill.id)) return '';
+        const requiredLevel = parseInt(skill.required_level || 1, 10);
+        if (level < requiredLevel) return `Requires level ${requiredLevel}.`;
+        if (skill.prerequisite_skill_id && !unlockedSet.has(skill.prerequisite_skill_id)) return 'Requires previous tier in this branch.';
+        return 'Locked by progression.';
+    };
+
+    const unlockPanel = `
+        <div style="margin-bottom:12px; padding:10px; border:1px solid #444; border-radius:6px; background:#202020;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:6px;">
+                <span style="color:#ffeaa7; font-weight:bold;">Skill Unlocks (${CLASS_NAMES[playerClassId] || 'Unknown'})</span>
+                <div style="display:flex; gap:6px; align-items:center;">
+                    <button class="combat-btn" style="margin:0; padding:4px 8px; font-size:11px;" onclick="toggleUnlockSkillMenu()">${skillUnlockMenuOpen ? 'Hide Menu' : 'Unlock'}</button>
+                    <button class="combat-btn" style="margin:0; padding:4px 8px; font-size:11px;" onclick="resetSkillTree()" ${canReset ? '' : 'disabled'}>Reset (${formatCoins(skillResetCostCopper)})</button>
+                </div>
+            </div>
+            <div style="font-size:11px; color:#bbb;">
+                Level: ${level} | Eligible: ${shouldHave}/4 | Unlocked: ${unlockedCount}/4 | Remaining: ${unlocksRemaining}
+            </div>
+            <div style="font-size:10px; color:#888; margin-top:4px;">Skills are earned at levels 5, 10, 15 and 20.</div>
+        </div>`;
+    const unlockedSkills = skillCatalog.filter(s => unlockedSet.has(s.id));
+    const unlockGroups = ['Buffs', 'Debuffs', 'Spells'];
+
+    const unlockMenuHtml = skillUnlockMenuOpen
+        ? `<div style="margin-bottom:12px; padding:10px; border:1px solid #444; border-radius:6px; background:#1d1d1d;">
+            <div style="font-weight:bold; color:#ffeaa7; margin-bottom:8px;">Choose skill to unlock</div>
+            ${unlocksRemaining <= 0
+                ? `<div style="font-size:11px; color:#aaa;">No unlock slots available for your current level.</div>`
+                : lockableSkills.length === 0
+                    ? `<div style="font-size:11px; color:#aaa;">All skills are already unlocked.</div>`
+                    : unlockGroups.map(group => {
+                        const skills = lockableSkills.filter(s => s.category === group);
+                        if (!skills.length) return '';
+                        const cards = skills.map(s => {
+                            const lockReason = getSkillLockReason(s);
+                            const isDisabled = lockReason !== '';
+                            const tier = parseInt(s.tier || 1, 10);
+                            const pathName = s.path_name || (CLASS_NAMES[parseInt(s.path_class_id || 0, 10)] || 'General');
+                            return `<div style="display:flex; justify-content:space-between; gap:8px; align-items:center; border:1px solid #444; border-radius:4px; padding:6px; background:#202020; opacity:${isDisabled ? '0.75' : '1'};">
+                                <div style="display:flex; align-items:center; gap:8px; min-width:0;">
+                                    <img src="${s.icon_path}" alt="${escapeHtml(s.name)}" style="width:24px; height:24px; image-rendering:pixelated;">
+                                    <div style="display:flex; flex-direction:column; gap:2px; min-width:0;">
+                                        <span style="font-size:12px; color:#fff;">${escapeHtml(s.name)} <span style="color:#ffeaa7; font-size:10px;">(Tier ${tier})</span></span>
+                                        <span style="font-size:10px; color:#aaa;">${escapeHtml(s.description || '')}</span>
+                                        <span style="font-size:10px; color:#9cc2ff;">Path: ${escapeHtml(pathName)}</span>
+                                        <span style="font-size:10px; color:${isDisabled ? '#ff9a9a' : '#8fe39f'};">${isDisabled ? escapeHtml(lockReason) : 'Ready to unlock'}</span>
+                                    </div>
+                                </div>
+                                <button class="combat-btn" style="margin:0; padding:4px 8px; font-size:11px; white-space:nowrap;" onclick="unlockSkillById('${s.id}')" ${isDisabled ? 'disabled' : ''}>Unlock</button>
+                            </div>`;
+                        }).join('');
+                        return `<div style="margin-bottom:10px;"><div style="font-weight:bold; color:#ffd700; margin-bottom:6px;">${group}</div><div style="display:grid; gap:6px;">${cards}</div></div>`;
+                    }).join('')
+            }
+        </div>`
+        : '';
+    
+    const groups = ['Buffs', 'Debuffs', 'Spells'];
+    const loadoutHtml = groups.map(group => {
+        const skills = unlockedSkills.filter(s => s.category === group);
+        if (!skills.length) return '';
+        const cards = skills.map(s => {
+            const checked = selectedSet.has(s.id);
+            const shouldDisable = !checked && selectedSkillIds.length >= 4;
+            return `<label style="display:flex; gap:8px; align-items:center; border:1px solid #444; border-radius:4px; padding:6px; background:#1d1d1d; opacity:${shouldDisable ? '0.6' : '1'}; cursor:pointer;">
+                <input type="checkbox" ${checked ? 'checked' : ''} ${shouldDisable ? 'disabled' : ''} onchange="toggleSkillSelection('${s.id}', this.checked)">
+                <img src="${s.icon_path}" alt="${escapeHtml(s.name)}" style="width:24px; height:24px; image-rendering:pixelated;">
+                <div style="display:flex; flex-direction:column; gap:2px;">
+                    <span style="font-size:12px; color:#fff;">${escapeHtml(s.name)}</span>
+                    <span style="font-size:10px; color:#aaa;">${escapeHtml(s.description || '')}</span>
+                </div>
+            </label>`;
+        }).join('');
+
+        return `<div style="margin-bottom:12px;"><div style="font-weight:bold; color:#ffd700; margin-bottom:6px;">${group}</div><div style="display:grid; gap:6px;">${cards}</div></div>`;
+    }).join('');
+
+    const loadoutSection = `
+        <div style="margin-bottom:8px; font-weight:bold; color:#ffeaa7;">Combat Loadout</div>
+        ${unlockedCount <= 0
+            ? `<div style="color:#aaa; text-align:center; padding:8px 4px 12px;">No unlocked skills yet.</div>`
+            : loadoutHtml
+        }`;
+
+    body.innerHTML = `${unlockPanel}${unlockMenuHtml}${loadoutSection}`;
+}
+
+window.toggleUnlockSkillMenu = function() {
+    skillUnlockMenuOpen = !skillUnlockMenuOpen;
+    renderSkillSelectionModal();
+};
+
+window.unlockSkillById = async function(skillId) {
+    const res = await apiPost('unlock_skill', { skill_id: skillId });
+    if (res.status !== 'success') {
+        if (Array.isArray(res.unlocked_skill_ids)) {
+            unlockedSkillIds = res.unlocked_skill_ids;
+        }
+        if (Array.isArray(res.unlockable_skill_ids)) {
+            unlockableSkillIds = res.unlockable_skill_ids;
+        }
+        if (res.reset_cost_copper !== undefined) {
+            skillResetCostCopper = parseInt(res.reset_cost_copper, 10) || 0;
+        }
+        updateAttributesUI(gameState);
+        renderSkillSelectionModal();
+        showToast(res.message || 'Unable to unlock this skill.', 'error');
+        return;
+    }
+
+    if (Array.isArray(res.unlocked_skill_ids)) {
+        unlockedSkillIds = res.unlocked_skill_ids;
+    } else {
+        await ensureSkillCatalogLoaded(true);
+    }
+    if (Array.isArray(res.unlockable_skill_ids)) {
+        unlockableSkillIds = res.unlockable_skill_ids;
+    }
+    if (res.reset_cost_copper !== undefined) {
+        skillResetCostCopper = parseInt(res.reset_cost_copper, 10) || 0;
+    }
+
+    refreshSelectedSkillsByLevel();
+    updateAttributesUI(gameState);
+    renderSkillSelectionModal();
+    const unlockedName = res.unlocked_skill?.name || 'skill';
+    showToast(`🎯 Unlocked: ${unlockedName}`, 'success');
+};
+
+window.resetSkillTree = async function() {
+    const unlockedCount = getUnlockedSkillCount();
+    if (unlockedCount <= 0) {
+        showToast('No unlocked skills to reset.', 'error');
+        return;
+    }
+
+    const costLabel = formatCoins(skillResetCostCopper || 0);
+    if (!confirm(`Reset your entire skill tree for ${costLabel}?`)) {
+        return;
+    }
+
+    const res = await apiPost('reset_skill_tree');
+    if (res.status !== 'success') {
+        if (res.cost_copper !== undefined) {
+            skillResetCostCopper = parseInt(res.cost_copper, 10) || skillResetCostCopper;
+        }
+        showToast(res.message || 'Failed to reset skill tree.', 'error');
+        return;
+    }
+
+    unlockedSkillIds = Array.isArray(res.unlocked_skill_ids) ? res.unlocked_skill_ids : [];
+    unlockableSkillIds = Array.isArray(res.unlockable_skill_ids) ? res.unlockable_skill_ids : [];
+    if (res.cost_copper !== undefined) {
+        skillResetCostCopper = parseInt(res.cost_copper, 10) || skillResetCostCopper;
+    }
+    if (res.gold !== undefined) {
+        gameState.gold = parseInt(res.gold, 10) || 0;
+        updateUI({ gold: gameState.gold });
+    }
+
+    refreshSelectedSkillsByLevel();
+    updateAttributesUI(gameState);
+    renderSkillSelectionModal();
+    showToast('🔁 Skill tree reset complete.', 'success');
+};
+
+window.toggleSkillSelection = function(skillId, isChecked) {
+    if (isChecked) {
+        if (selectedSkillIds.includes(skillId)) return;
+        if (selectedSkillIds.length >= 4) {
+            showToast('Max 4 skills in combat loadout.', 'error');
+            renderSkillSelectionModal();
+            return;
+        }
+        selectedSkillIds.push(skillId);
+    } else {
+        selectedSkillIds = selectedSkillIds.filter(id => id !== skillId);
+    }
+    selectedSkillIds = selectedSkillIds.slice(0, 4);
+    saveSelectedSkillsToStorage();
+    updateAttributesUI(gameState);
+    renderSkillSelectionModal();
+};
+
+window.openSkillSelectionModal = async function() {
+    const ok = await ensureSkillCatalogLoaded(true);
+    if (!ok) {
+        showToast('Unable to load skills.', 'error');
+        return;
+    }
+    skillUnlockMenuOpen = false;
+    refreshSelectedSkillsByLevel();
+    const modal = document.getElementById('skill-selection-modal');
+    if (!modal) return;
+    renderSkillSelectionModal();
+    modal.style.display = 'flex';
+};
+
+function closeCombatSkillsModal() {
+    const modal = document.getElementById('combat-skills-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+function renderCombatSkillsModal() {
+    const body = document.getElementById('combat-skills-body');
+    if (!body) return;
+
+    const selected = getSelectedSkillsDetailed();
+    if (!selected.length) {
+        body.innerHTML = '<div style="color:#aaa; text-align:center;">No skills selected in Attributes.</div>';
+        return;
+    }
+
+    body.innerHTML = selected.map(s => `
+        <button class="combat-btn" style="display:flex; align-items:center; gap:8px; width:100%; margin:0 0 6px 0; justify-content:flex-start;" onclick="handleCombatUseSkill('${s.id}')">
+            <img src="${s.icon_path}" alt="${escapeHtml(s.name)}" style="width:22px; height:22px; image-rendering:pixelated;">
+            <span>${escapeHtml(s.name)}</span>
+        </button>
+    `).join('');
+}
+
+window.openCombatSkillsModal = function() {
+    if (!combatState || combatState.turn !== 'player') {
+        showToast('You can use skills only on your turn.', 'error');
+        return;
+    }
+    const modal = document.getElementById('combat-skills-modal');
+    if (!modal) return;
+    renderCombatSkillsModal();
+    modal.style.display = 'flex';
+};
+
+window.handleCombatUseSkill = async function(skillId) {
+    if (!combatState || combatState.turn !== 'player') return;
+    const res = await apiPost('combat_use_skill', {
+        skill_id: skillId,
+        selected_skills: selectedSkillIds
+    });
+    if (res.status !== 'success') {
+        showToast(res.message || 'Skill failed.', 'error');
+        return;
+    }
+
+    if (res.hp !== undefined) {
+        gameState.hp = parseInt(res.hp, 10);
+        document.getElementById('combat-hp').innerText = res.hp;
+        updateBar('combat-hp-bar', res.hp, gameState.max_hp);
+    }
+    if (res.enemy_hp !== undefined) {
+        gameState.enemy_hp = parseInt(res.enemy_hp, 10);
+        document.getElementById('enemy-hp').innerText = res.enemy_hp;
+        updateBar('combat-enemy-fill', res.enemy_hp, gameState.enemy_max_hp);
+    }
+
+    document.getElementById('combat-log').innerText = res.log || 'Skill used.';
+    combatState = res.combat_state;
+    closeCombatSkillsModal();
+    renderCombatArena();
+    renderCombatSkillQuickbar();
+
+    if (res.win) {
+        showCombatResult(res.xp_gain, res.gold_gain, res.loot, res.tutorial_finished);
+    }
+};
+
+window.closeSkillSelectionModal = closeSkillSelectionModal;
+window.closeCombatSkillsModal = closeCombatSkillsModal;
+
 function updateLocalState(data) {
     gameState.x = parseInt(data.pos_x);
     gameState.y = parseInt(data.pos_y);
@@ -1227,6 +1838,8 @@ function updateLocalState(data) {
     // Luźne porównanie (==) bo PHP może zwrócić "1" lub 1
     gameState.tutorial_completed = (data.tutorial_completed == 1);
     gameState.gold = parseInt(data.gold || 0);
+    gameState.world_id = parseInt(data.world_id || 2);
+    if(data.level !== undefined) gameState.level = parseInt(data.level);
     if(data.stat_points !== undefined) gameState.stat_points = parseInt(data.stat_points);
     if(data.name) gameState.name = data.name;
     if(data.class_id) gameState.class_id = parseInt(data.class_id);
@@ -1255,7 +1868,9 @@ function updateUI(data) {
         const mapGoldEl = document.getElementById('gold-display');
         if (mapGoldEl) mapGoldEl.innerHTML = formatCoins(g, true);
     }
+    refreshSelectedSkillsByLevel();
     updateAttributesUI(data);
+    maybeNotifySkillUnlock();
 }
 
 function updateBar(elementId, current, max) {
@@ -1282,12 +1897,29 @@ function updateAttributesUI(data) {
                 <span>${label}: <strong style="color:white">${val}</strong></span>
                 ${pts > 0 ? `<button class="icon-btn" style="background:#00e676; color:black; width:24px; height:24px; border-radius:4px; font-weight:bold; font-size:16px; padding:0; display:flex; align-items:center; justify-content:center;" onclick="spendPoint('${statKey}')" title="${bonus}">+</button>` : ''}
             </div>`;
-            
+
+        const unlockedCount = getUnlockedSkillCount();
+        const selectedDetailed = getSelectedSkillsDetailed();
+        const selectedHtml = selectedDetailed.length
+            ? selectedDetailed.map(s => `<div style="display:flex; align-items:center; gap:8px; background:#1f1f1f; border:1px solid #444; padding:6px; border-radius:4px;">
+                    <img src="${s.icon_path}" alt="${escapeHtml(s.name)}" style="width:24px; height:24px; image-rendering:pixelated;">
+                    <span style="font-size:12px; color:#ddd;">${escapeHtml(s.name)}</span>
+               </div>`).join('')
+            : `<div style="font-size:12px; color:#888;">No skills in loadout.</div>`;
+
         list.innerHTML = 
             createRow('Attack', totalAtk, 'str') +
             createRow('Defense', totalDef, 'def') +
             createRow('Max HP', data.max_hp || gameState.max_hp, 'hp', '+5') +
-            createRow('Max Energy', data.max_energy || gameState.max_energy, 'eng');
+            createRow('Max Energy', data.max_energy || gameState.max_energy, 'eng') +
+            `<div style="margin-top:8px; background:#252525; padding:10px; border-radius:4px; border:1px solid #444;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <span style="color:#ffeaa7; font-weight:bold;">Combat Loadout</span>
+                    <button class="combat-btn" style="margin:0; padding:4px 8px; font-size:11px;" onclick="openSkillSelectionModal()">Unlock / Configure</button>
+                </div>
+                <div style="font-size:11px; color:#bbb; margin-bottom:8px;">Unlocked: ${unlockedCount} | In loadout: ${selectedDetailed.length}/4</div>
+                <div style="display:grid; gap:6px;">${selectedHtml}</div>
+            </div>`;
     }
 }
 
@@ -1313,7 +1945,18 @@ function toggleSettings() {
     const displayModal = modal.style.display;
     const isOpening = displayModal !== 'flex';
     modal.style.display = isOpening ? 'flex' : 'none';
-    if (isOpening) syncMusicSettingsUI();
+    if (isOpening) {
+        syncMusicSettingsUI();
+        syncGraphicsSettingsUI();
+        const help = document.getElementById('keyboard-shortcuts-help');
+        if (help) help.style.display = 'none';
+    }
+}
+
+function toggleShortcutHelp() {
+    const help = document.getElementById('keyboard-shortcuts-help');
+    if (!help) return;
+    help.style.display = (help.style.display === 'none' || !help.style.display) ? 'block' : 'none';
 }
 
 function playMusic() {
@@ -1689,10 +2332,12 @@ window.stopMusic = stopMusic;
 window.setVolume = setVolume;
 window.setMusicLoop = setMusicLoop;
 window.setMusicTrack = setMusicTrack;
+window.setGraphicsPreset = setGraphicsPreset;
 window.changeCharacter = changeCharacter;
 window.loadCharacterSelection = loadCharacterSelection;
 window.setSfxVolume = setSfxVolume;
 window.selectCharacter = selectCharacter;
+window.toggleShortcutHelp = toggleShortcutHelp;
 window.createNewCharacter = createNewCharacter;
 window.submitNewCharacter = submitNewCharacter;
 
@@ -1760,9 +2405,11 @@ function preloadAssets() {
 
 // On initial page load, check for remembered login
 document.addEventListener('DOMContentLoaded', () => {
+    loadGraphicsPreset();
     checkRememberedLogin();
     populateMusicList();
     syncMusicSettingsUI();
+    syncGraphicsSettingsUI();
     // Ensure game-layout is hidden by default on page load
     const gameLayout = document.getElementById('game-layout');
     if (gameLayout) {
@@ -1779,8 +2426,10 @@ let otherPlayersAnimInterval = null;
 
 function startMultiplayerPolling() {
     if (updatePlayersInterval) clearInterval(updatePlayersInterval);
+    const cfg = getGraphicsConfig();
+    const pollMs = Math.max(1000, parseInt(cfg.multiplayerPollMs || 1500, 10));
     updateOtherPlayers(); // Call once immediately
-    updatePlayersInterval = setInterval(updateOtherPlayers, 1500); // Poll every 1.5 seconds
+    updatePlayersInterval = setInterval(updateOtherPlayers, pollMs);
     startOtherPlayersAnimationLoop();
 }
 
@@ -1797,6 +2446,15 @@ function stopMultiplayerPolling() {
 
 function startOtherPlayersAnimationLoop() {
     if (otherPlayersAnimInterval) clearInterval(otherPlayersAnimInterval);
+    const cfg = getGraphicsConfig();
+    if (!cfg.otherPlayersAnimEnabled) {
+        Object.values(otherPlayerMarkers).forEach(marker => {
+            marker.style.backgroundImage = `url('${playerSprites.idle[0]}')`;
+            marker.dataset.frameIndex = 0;
+        });
+        return;
+    }
+    const speedMs = Math.max(60, parseInt(cfg.animationSpeedMs || ANIMATION_SPEED, 10));
     otherPlayersAnimInterval = setInterval(() => {
         Object.values(otherPlayerMarkers).forEach(marker => {
             let state = marker.dataset.animState || 'idle';
@@ -1809,7 +2467,7 @@ function startOtherPlayersAnimationLoop() {
                 marker.dataset.frameIndex = frameIdx;
             }
         });
-    }, ANIMATION_SPEED);
+    }, speedMs);
 }
 
 function stopOtherPlayersAnimationLoop() {
@@ -2028,11 +2686,14 @@ function renderOtherPlayer(playerId) {
 
 function spawnCombatParticles(targetEl, color) {
     if (!targetEl) return;
+    const cfg = getGraphicsConfig();
+    const particleCount = Math.max(0, parseInt(cfg.combatParticleCount || 0, 10));
+    if (particleCount <= 0) return;
     const rect = targetEl.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
 
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < particleCount; i++) {
         const p = document.createElement('div');
         p.style.position = 'fixed'; p.style.left = centerX + 'px'; p.style.top = centerY + 'px';
         p.style.width = (Math.random() * 6 + 4) + 'px'; p.style.height = p.style.width;
@@ -2081,6 +2742,7 @@ function showRespawnEffect() {
 
 function showFloatingDamage(targetEl, amount, color) {
     if (!targetEl) return;
+    if (!getGraphicsConfig().floatingDamageEnabled) return;
     const rect = targetEl.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
     const topY = rect.top;
@@ -2291,6 +2953,13 @@ document.addEventListener('click', (e) => {
 function updateDayNightCycle() {
     const overlay = document.getElementById('day-night-overlay');
     if (!overlay) return;
+
+    const cfg = getGraphicsConfig();
+    if (!cfg.dayNightEnabled) {
+        overlay.style.backgroundColor = 'rgba(0, 0, 0, 0)';
+        document.body.classList.remove('night-mode');
+        return;
+    }
     
     const hour = new Date().getHours();
     let color = 'rgba(0, 0, 0, 0)'; // Dzień (domyślnie)
@@ -2485,14 +3154,163 @@ window.toggleRightPanel = function() {
     }, 400);
 }
 
-// Add keyboard shortcut listener for the right panel
+function isElementVisible(el) {
+    if (!el) return false;
+    const style = window.getComputedStyle(el);
+    return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+}
+
+function isPlayerInSettlement() {
+    const tile = document.querySelector(`.tile[data-x='${gameState.x}'][data-y='${gameState.y}']`);
+    if (!tile) return false;
+    return tile.classList.contains('city_capital') || tile.classList.contains('city_village');
+}
+
+function closeOpenOverlayByPriority() {
+    const closeMap = [
+        { id: 'mobile-disclaimer-modal', close: () => { document.getElementById('mobile-disclaimer-modal').style.display = 'none'; } },
+        { id: 'item-menu-modal', close: () => { document.getElementById('item-menu-modal').style.display = 'none'; } },
+        { id: 'skill-selection-modal', close: () => closeSkillSelectionModal() },
+        { id: 'combat-skills-modal', close: () => closeCombatSkillsModal() },
+        { id: 'planet-change-modal', close: () => closePlanetChangeModal() },
+        { id: 'guilds-modal', close: () => { document.getElementById('guilds-modal').style.display = 'none'; } },
+        { id: 'shop-modal', close: () => { document.getElementById('shop-modal').style.display = 'none'; } },
+        { id: 'world-selection', close: () => { document.getElementById('world-selection').style.display = 'none'; } },
+        { id: 'create-char-modal', close: () => closeCreateCharacter() },
+        { id: 'char-selection-modal', close: () => closeCharacterSelection() },
+        { id: 'combat-result-modal', close: () => closeCombatResult() },
+        { id: 'settings-modal', close: () => toggleSettings() }
+    ];
+
+    for (const item of closeMap) {
+        const modal = document.getElementById(item.id);
+        if (isElementVisible(modal)) {
+            item.close();
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function handleEnterShortcut() {
+    const authModal = document.getElementById('auth-modal');
+    if (isElementVisible(authModal)) {
+        const loginForm = document.getElementById('login-form');
+        const registerForm = document.getElementById('register-form');
+        if (registerForm && registerForm.style.display !== 'none' && loginForm && loginForm.style.display === 'none') {
+            handleRegister();
+        } else {
+            handleLogin();
+        }
+        return true;
+    }
+
+    const createCharModal = document.getElementById('create-char-modal');
+    if (isElementVisible(createCharModal)) {
+        submitNewCharacter();
+        return true;
+    }
+
+    const gameLayout = document.getElementById('game-layout');
+    if (isElementVisible(gameLayout) && !inCombatMode && isPlayerInSettlement()) {
+        const settingsModal = document.getElementById('settings-modal');
+        const shopModal = document.getElementById('shop-modal');
+        if (!isElementVisible(settingsModal) && !isElementVisible(shopModal)) {
+            openCityMenu();
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function handleEscapeShortcut() {
+    if (closeOpenOverlayByPriority()) {
+        return true;
+    }
+
+    const gameLayout = document.getElementById('game-layout');
+    if (isElementVisible(gameLayout) && !inCombatMode) {
+        toggleSettings();
+        return true;
+    }
+
+    return false;
+}
+
+function handleCombatShortcutKey(e) {
+    if (!inCombatMode || !gameState.in_combat) return false;
+
+    const combatScreen = document.getElementById('combat-screen');
+    if (!isElementVisible(combatScreen)) return false;
+
+    const blockedBy = [
+        'combat-result-modal',
+        'settings-modal',
+        'skill-selection-modal',
+        'planet-change-modal',
+        'world-selection'
+    ];
+    for (const modalId of blockedBy) {
+        if (isElementVisible(document.getElementById(modalId))) return false;
+    }
+
+    const key = String(e.key || '').toLowerCase();
+
+    if (key === 'a') {
+        handleCombatAttack();
+        return true;
+    }
+
+    if (key === 'd') {
+        handleCombatDefend();
+        return true;
+    }
+
+    if (key >= '1' && key <= '4') {
+        const selected = getSelectedSkillsDetailed();
+        const index = parseInt(key, 10) - 1;
+        const skill = selected[index];
+        if (!skill) {
+            showToast(`No skill in slot ${key}.`, 'error');
+            return true;
+        }
+        handleCombatUseSkill(skill.id);
+        return true;
+    }
+
+    return false;
+}
+
 document.addEventListener('keydown', (e) => {
-    // Do not trigger shortcut if user is typing in an input field
-    if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') {
+    const active = document.activeElement;
+    const tag = active?.tagName;
+    const isTyping = !!active && (tag === 'INPUT' || tag === 'TEXTAREA' || active.isContentEditable);
+
+    if (e.key === 'Escape') {
+        if (handleEscapeShortcut()) {
+            e.preventDefault();
+        }
         return;
     }
+
+    if (e.key === 'Enter') {
+        if (handleEnterShortcut()) {
+            e.preventDefault();
+        }
+        return;
+    }
+
+    if (isTyping) return;
+
+    if (!e.repeat && handleCombatShortcutKey(e)) {
+        e.preventDefault();
+        return;
+    }
+
     if (e.key === 'Tab') {
-        e.preventDefault(); // Prevent default focus switching behavior
+        e.preventDefault();
         toggleRightPanel();
     }
 });
@@ -2954,6 +3772,82 @@ async function joinGuild(guildId) {
     }
 }
 
+// --- PLANET CHANGE SYSTEM ---
+function updatePlanetChangeButtonVisibility() {
+    const btn = document.getElementById('planet-change-btn');
+    if (!btn) return;
+    
+    const level = gameState.level || 1;
+    if (level >= 15) {
+        btn.style.display = 'block';
+    } else {
+        btn.style.display = 'none';
+    }
+}
+
+async function openPlanetChangeModal() {
+    const modal = document.getElementById('planet-change-modal');
+    if (!modal) return;
+    
+    // Just show the modal - cost will be checked when they try to travel
+    modal.style.display = 'flex';
+}
+
+function closePlanetChangeModal() {
+    const modal = document.getElementById('planet-change-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function purchasePlanetTravel(planetName) {
+    const res = await apiPost('get_state');
+    if (res.status !== 'success') {
+        showToast('Failed to check player status.', 'error');
+        return;
+    }
+    
+    const level = parseInt(res.data.level) || 1;
+    const gold = parseInt(res.data.gold) || 0;
+    
+    // Planet-specific requirements
+    const planetRequirements = {
+        'Terra': { min_level: 0, cost_copper: 0, description: 'Free - Your home planet' },
+        'Glaciem': { min_level: 15, cost_copper: 1500, description: '15 Silver (1500 Copper)' },
+        'Solaris': { min_level: 30, cost_copper: 10000, description: '1 Gold (10000 Copper)' }
+    };
+    
+    if (!planetRequirements[planetName]) {
+        showToast('Unknown planet.', 'error');
+        return;
+    }
+    
+    const req = planetRequirements[planetName];
+    
+    // Check level requirement
+    if (level < req.min_level) {
+        showToast(`You need level ${req.min_level} to travel to ${planetName}! Current: ${level}/${req.min_level}`, 'error');
+        return;
+    }
+    
+    // Check cost
+    if (req.cost_copper > 0 && gold < req.cost_copper) {
+        const needed = req.cost_copper - gold;
+        showToast(`Not enough coins! Need ${req.cost_copper} copper, you have ${gold}. Missing: ${needed} copper`, 'error');
+        return;
+    }
+    
+    // Send teleport request to API
+    const teleRes = await apiPost('teleport_planet', { planet_name: planetName, cost: req.cost_copper });
+    if (teleRes.status === 'success') {
+        showToast(`✨ Traveled to ${planetName}!`, 'success');
+        closePlanetChangeModal();
+        // Reload game - reinitialize everything
+        setTimeout(() => {
+            initGame();
+        }, 500);
+    } else {
+        showToast(teleRes.message || 'Travel failed.', 'error');
+    }
+}
 // Wrap original switchTab to load quests when switching to quest tab
 const _originalSwitchTab = switchTab;
 switchTab = function(tabName) {
@@ -2962,3 +3856,4 @@ switchTab = function(tabName) {
     }
     _originalSwitchTab(tabName);
 };
+

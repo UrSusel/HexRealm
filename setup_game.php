@@ -146,9 +146,32 @@ try {
         world_id INT NOT NULL,
         pos_x INT NOT NULL DEFAULT 0,
         pos_y INT NOT NULL DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         PRIMARY KEY (character_id, world_id),
         FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE,
         FOREIGN KEY (world_id) REFERENCES worlds(id) ON DELETE CASCADE
+    )");
+    
+    // Add updated_at column to saved_positions if it doesn't exist (for backward compatibility)
+    try {
+        $pdo->exec("ALTER TABLE saved_positions ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
+    } catch (Exception $e) {
+        // Column already exists, ignore error
+    }
+
+    // Planet-specific tile tables (Solaris and Glaciem each have their own map)
+    $pdo->exec("CREATE TABLE IF NOT EXISTS tiles_solaris (
+        x INT NOT NULL,
+        y INT NOT NULL,
+        type VARCHAR(20) NOT NULL,
+        PRIMARY KEY (x, y)
+    )");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS tiles_glaciem (
+        x INT NOT NULL,
+        y INT NOT NULL,
+        type VARCHAR(20) NOT NULL,
+        PRIMARY KEY (x, y)
     )");
 
     // Quest system tables
@@ -258,7 +281,7 @@ try {
         (22, 'Bandit Insignia', 'drop', 0, NULL, '🎖️', 25, 'rare', 'Stolen from a desert bandit.'),
         (23, 'Lava Core', 'drop', 0, NULL, '🔥', 50, 'rare', 'Warm to the touch.'),
         (24, 'Demon Horn', 'drop', 0, NULL, '😈', 120, 'very_rare', 'Radiates dark energy.')
-        ON DUPLICATE KEY UPDATE name=VALUES(name), price=VALUES(price), rarity=VALUES(rarity), description=VALUES(description)
+        ON DUPLICATE KEY UPDATE name=VALUES(name), type=VALUES(type), price=VALUES(price), rarity=VALUES(rarity), description=VALUES(description)
     ");
 
     // Insert initial quests
@@ -374,8 +397,106 @@ try {
         }
     }
 
+    // ===== TERRA (world_id = 2) =====
+    $pdo->prepare("DELETE FROM map_tiles WHERE world_id = ?")->execute([2]);
+    $pdo->prepare("INSERT INTO worlds (id, name, width, height, is_tutorial) VALUES (2, ?, ?, ?, 0)
+        ON DUPLICATE KEY UPDATE name = VALUES(name), width = VALUES(width), height = VALUES(height), is_tutorial = VALUES(is_tutorial)")
+        ->execute(['Terra', 20, 20]);
+    
+    $tiles = [];
+    for ($y = 0; $y < 20; $y++) {
+        $row = [];
+        for ($x = 0; $x < 20; $x++) {
+            $type = 'grass';
+            $r = rand(1, 100);
+            if ($r > 40) $type = 'grass2';
+            if ($r > 65) $type = 'forest';
+            if ($r > 85) $type = 'mountain';
+            if ($r > 95) $type = 'water';
+            
+            // City at center
+            if ($x == 10 && $y == 10) $type = 'city_capital';
+            
+            $row[] = $type;
+        }
+        $tiles[] = $row;
+    }
+    applyHills($tiles, 20, 20);
+    applyFarmlands($tiles, 20, 20);
+    
+    $stmt = $pdo->prepare("INSERT INTO map_tiles (world_id, x, y, type) VALUES (2, ?, ?, ?)");
+    for ($y = 0; $y < 20; $y++) {
+        for ($x = 0; $x < 20; $x++) {
+            $stmt->execute([$x, $y, $tiles[$y][$x]]);
+        }
+    }
+
+    // ===== SOLARIS (world_id = 3 - Desert Planet) =====
+    $pdo->prepare("DELETE FROM map_tiles WHERE world_id = ?")->execute([3]);
+    $pdo->prepare("INSERT INTO worlds (id, name, width, height, is_tutorial) VALUES (3, ?, ?, ?, 0)
+        ON DUPLICATE KEY UPDATE name = VALUES(name), width = VALUES(width), height = VALUES(height), is_tutorial = VALUES(is_tutorial)")
+        ->execute(['Solaris', 20, 20]);
+    
+    $tiles = [];
+    for ($y = 0; $y < 20; $y++) {
+        $row = [];
+        for ($x = 0; $x < 20; $x++) {
+            // Desert biome - mostly sand/desert
+            $type = 'grass'; // Sand acts like grass
+            $r = rand(1, 100);
+            if ($r > 50) $type = 'grass2'; // More sand variation
+            if ($r > 80) $type = 'mountain'; // Rocky outcrops
+            if ($r > 95) $type = 'water'; // Rare oasis
+            
+            // City at center
+            if ($x == 10 && $y == 10) $type = 'city_capital';
+            
+            $row[] = $type;
+        }
+        $tiles[] = $row;
+    }
+    
+    $stmt = $pdo->prepare("INSERT INTO map_tiles (world_id, x, y, type) VALUES (3, ?, ?, ?)");
+    for ($y = 0; $y < 20; $y++) {
+        for ($x = 0; $x < 20; $x++) {
+            $stmt->execute([$x, $y, $tiles[$y][$x]]);
+        }
+    }
+
+    // ===== GLACIEM (world_id = 4 - Ice Planet) =====
+    $pdo->prepare("DELETE FROM map_tiles WHERE world_id = ?")->execute([4]);
+    $pdo->prepare("INSERT INTO worlds (id, name, width, height, is_tutorial) VALUES (4, ?, ?, ?, 0)
+        ON DUPLICATE KEY UPDATE name = VALUES(name), width = VALUES(width), height = VALUES(height), is_tutorial = VALUES(is_tutorial)")
+        ->execute(['Glaciem', 20, 20]);
+    
+    $tiles = [];
+    for ($y = 0; $y < 20; $y++) {
+        $row = [];
+        for ($x = 0; $x < 20; $x++) {
+            // Frozen biome - mountains, water (ice), sparse grass
+            $type = 'water'; // Ice/snow acts like water
+            $r = rand(1, 100);
+            if ($r > 60) $type = 'mountain'; // Icy peaks
+            if ($r > 80) $type = 'grass'; // Frozen tundra
+            if ($r > 95) $type = 'forest'; // Rare frozen forest
+            
+            // City at center
+            if ($x == 10 && $y == 10) $type = 'city_capital';
+            
+            $row[] = $type;
+        }
+        $tiles[] = $row;
+    }
+    
+    $stmt = $pdo->prepare("INSERT INTO map_tiles (world_id, x, y, type) VALUES (4, ?, ?, ?)");
+    for ($y = 0; $y < 20; $y++) {
+        for ($x = 0; $x < 20; $x++) {
+            $stmt->execute([$x, $y, $tiles[$y][$x]]);
+        }
+    }
+
     $pdo->exec("SET FOREIGN_KEY_CHECKS = 1");
-    echo "<h1 style='color:green'>✅ Done! (Tutorial world recreated)</h1>";
+    echo "<h1 style='color:green'>✅ Done! (All worlds created)</h1>";
     echo "<a href='index.php'>RETURN TO GAME</a>";
 
 } catch (PDOException $e) {

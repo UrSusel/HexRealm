@@ -226,8 +226,10 @@ try {
         id INT AUTO_INCREMENT PRIMARY KEY,
         name VARCHAR(100) NOT NULL,
         description TEXT,
-        required_reputation INT DEFAULT 10,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        owner_id INT NOT NULL,
+        is_open TINYINT(1) DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE SET NULL
     )");
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS guild_members (
@@ -240,6 +242,23 @@ try {
         FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE,
         UNIQUE KEY idx_char_guild (character_id, guild_id)
     )");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS guild_join_requests (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        guild_id INT NOT NULL,
+        character_id INT NOT NULL,
+        requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (guild_id) REFERENCES guilds(id) ON DELETE CASCADE,
+        FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE,
+        UNIQUE KEY idx_guild_request (guild_id, character_id)
+    )");
+
+    // Add missing columns for old installations gracefully
+    try { $pdo->exec("ALTER TABLE guilds ADD COLUMN owner_id INT NOT NULL DEFAULT 1"); } catch (Exception $e) {}
+    try { $pdo->exec("ALTER TABLE guilds ADD COLUMN is_open TINYINT(1) DEFAULT 1"); } catch (Exception $e) {}
+    try { $pdo->exec("ALTER TABLE guilds ADD COLUMN description TEXT"); } catch (Exception $e) {}
+    try { $pdo->exec("ALTER TABLE guild_members ADD COLUMN rank VARCHAR(50) DEFAULT 'member'"); } catch (Exception $e) {}
+
 
     // --- Remove ONLY the tutorial world (id=1) and its tiles ---
     $pdo->prepare("DELETE FROM map_tiles WHERE world_id = ?")->execute([1]);
@@ -311,14 +330,8 @@ try {
         ON DUPLICATE KEY UPDATE title=VALUES(title), description=VALUES(description), required_items=VALUES(required_items), reward_gold=VALUES(reward_gold), reward_reputation=VALUES(reward_reputation), guild_required=VALUES(guild_required), repeatable=VALUES(repeatable), max_level=VALUES(max_level)
     ");
 
-    // Insert guilds
-    $pdo->exec("INSERT INTO guilds (id, name, description, required_reputation) VALUES
-        (1, 'Warriors Guild', 'A guild for brave warriors seeking glory in battle.', 10),
-        (2, 'Mages Collegium', 'An academy for arcane practitioners and scholars.', 10),
-        (3, 'Thieves Brotherhood', 'A secretive organization of rogues and assassins.', 10),
-        (4, 'Merchants Union', 'A trading guild for those who prefer gold to glory.', 15)
-        ON DUPLICATE KEY UPDATE name=VALUES(name), description=VALUES(description), required_reputation=VALUES(required_reputation)
-    ");
+    // No default system guilds. Player-created guilds only.
+    // Keep the table empty by default.
 
     // One-time price scaling
     $pdo->exec("CREATE TABLE IF NOT EXISTS game_settings (

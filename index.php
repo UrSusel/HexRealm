@@ -1692,8 +1692,16 @@ header('Expires: 0');
                 <option value="low">Low (Performance)</option>
                 <option value="medium">Medium (Balanced)</option>
                 <option value="high">High (Quality)</option>
+                <option value="max">Max (Ultra, dynamic lighting + shadows)</option>
             </select>
             <div id="graphics-preset-desc" style="color:#8b7355; font-size:11px; margin-top:6px; text-align:left;">Auto: selected profile based on your device.</div>
+            <div style="margin-top:8px; color:#c9a875; font-size:12px;">Shadow Strength: <span id="shadow-strength-value" style="font-weight:bold;">60%</span></div>
+            <input id="shadow-strength-range" type="range" min="10" max="100" step="5" value="60" oninput="setShadowStrength(this.value)" style="width:100%; margin-top:4px;">
+            <div style="margin-top:12px; padding:10px; background:rgba(0,0,0,0.35); border:1px solid #5c4a35; border-radius:4px; color:#f4d58d; display:flex; align-items:center; justify-content:space-between;">
+                <label style="font-size:12px; font-weight:bold; display:flex; align-items:center; gap:8px;"><input id="network-saver-toggle" type="checkbox" onclick="toggleNetworkSaver()"> <span id="network-saver-label">📶 Network saver: OFF</span></label>
+                <span style="font-size:10px; color:#c9a875;">Fewer network requests</span>
+            </div>
+
         </div>
 
         <div class="settings-actions">
@@ -1710,6 +1718,7 @@ header('Expires: 0');
 
             <button class="combat-btn" style="width:100%; filter: hue-rotate(180deg);" onclick="changeCharacter()">Change Character</button>
             <button class="combat-btn" style="width:100%; filter: hue-rotate(70deg);" onclick="location.href='credits.php'">Credits</button>
+            <button class="combat-btn" style="width:100%; filter: hue-rotate(70deg);" onclick="location.href='contact.php'">Contact</button>
             <button class="combat-btn" style="width:100%; filter: hue-rotate(350deg) brightness(1.1);" onclick="handleLogout()">Logout</button>
         </div>
     </div>

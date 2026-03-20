@@ -47,6 +47,12 @@ function getMapViewportRangeByGraphicsPreset($preset) {
     if ($preset === 'medium') {
         return [10, 14];
     }
+    if ($preset === 'high') {
+        return [12, 16];
+    }
+    if ($preset === 'max') {
+        return [14, 18];
+    }
 
     return [10, 14];
 }
@@ -2447,51 +2453,191 @@ if ($action === 'get_reputation') {
 }
 
 if ($action === 'get_guilds') {
-    $guilds = $pdo->query("SELECT * FROM guilds ORDER BY required_reputation ASC")->fetchAll(PDO::FETCH_ASSOC);
-    
+    $guilds = $pdo->query("SELECT g.*, u.username AS owner_name,
+            (SELECT COUNT(*) FROM guild_members m WHERE m.guild_id = g.id) AS member_count,
+            (SELECT COUNT(*) FROM guild_join_requests r WHERE r.guild_id = g.id) AS pending_count
+        FROM guilds g
+        LEFT JOIN users u ON u.id = g.owner_id
+        ORDER BY g.created_at DESC")->fetchAll(PDO::FETCH_ASSOC);
+
+    $member = $pdo->prepare("SELECT gm.guild_id, gm.rank FROM guild_members gm WHERE gm.character_id = ?");
+    $member->execute([$charId]);
+    $memberRow = $member->fetch(PDO::FETCH_ASSOC);
+    $currentGuildId = $memberRow ? $memberRow['guild_id'] : null;
+    $currentRank = $memberRow ? $memberRow['rank'] : null;
+
     $rep = $pdo->prepare("SELECT points FROM reputation WHERE character_id = ?");
     $rep->execute([$charId]);
     $repRow = $rep->fetch(PDO::FETCH_ASSOC);
     $repPoints = $repRow ? (int)$repRow['points'] : 0;
-    
+
+    $currentGuild = null;
+    $currentMembers = [];
+    $pendingRequests = [];
+
+    if ($currentGuildId) {
+        $gStmt = $pdo->prepare("SELECT g.*, u.username AS owner_name FROM guilds g LEFT JOIN users u ON u.id = g.owner_id WHERE g.id = ?");
+        $gStmt->execute([$currentGuildId]);
+        $currentGuild = $gStmt->fetch(PDO::FETCH_ASSOC);
+
+        $mStmt = $pdo->prepare("SELECT gm.character_id, c.name as character_name, gm.rank, gm.joined_at
+            FROM guild_members gm
+            JOIN characters c ON c.id = gm.character_id
+            WHERE gm.guild_id = ?");
+        $mStmt->execute([$currentGuildId]);
+        $currentMembers = $mStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $rStmt = $pdo->prepare("SELECT r.id, r.character_id, c.name as character_name, r.requested_at
+            FROM guild_join_requests r
+            JOIN characters c ON c.id = r.character_id
+            WHERE r.guild_id = ?");
+        $rStmt->execute([$currentGuildId]);
+        $pendingRequests = $rStmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    foreach ($guilds as &$guild) {
+        $guild['is_member'] = ($currentGuildId == $guild['id']);
+        $guild['is_owner'] = ($guild['owner_id'] == $char['user_id']);
+        $guild['can_join_directly'] = $guild['is_open'] && !$currentGuildId && !$guild['is_member'];
+        $guild['can_request'] = !$guild['is_open'] && !$currentGuildId && !$guild['is_member'];
+        $guild['requested'] = false;
+
+        $rqCheck = $pdo->prepare("SELECT id FROM guild_join_requests WHERE guild_id = ? AND character_id = ?");
+        $rqCheck->execute([$guild['id'], $charId]);
+        if ($rqCheck->fetch()) {
+            $guild['requested'] = true;
+        }
+    }
+
+    echo json_encode([
+        'status' => 'success',
+        'guilds' => $guilds,
+        'reputation' => $repPoints,
+        'current_guild_id' => $currentGuildId,
+        'current_rank' => $currentRank,
+        'current_guild' => $currentGuild,
+        'current_members' => $currentMembers,
+        'pending_requests' => $pendingRequests
+    ]);
+    exit;
+}
+
+if ($action === 'create_guild') {
+    $name = trim($input['name'] ?? '');
+    $description = trim($input['description'] ?? 'A player guild');
+    $isOpen = ($input['is_open'] ?? '1') ? 1 : 0;
+
+    if ($name === '') {
+        $name = 'Adventurer';
+    }
+
     $member = $pdo->prepare("SELECT guild_id FROM guild_members WHERE character_id = ?");
     $member->execute([$charId]);
-    $memberRow = $member->fetch(PDO::FETCH_ASSOC);
-    $currentGuildId = $memberRow ? $memberRow['guild_id'] : null;
-    
-    foreach ($guilds as &$guild) {
-        $guild['can_join'] = ($repPoints >= $guild['required_reputation']) && ($currentGuildId === null);
-        $guild['is_member'] = ($currentGuildId == $guild['id']);
+    if ($member->fetch()) {
+        echo json_encode(['status' => 'error', 'message' => 'You are already in a guild']); exit;
     }
-    
-    echo json_encode(['status' => 'success', 'guilds' => $guilds, 'reputation' => $repPoints]); exit;
+
+    $cost = 100000; // 10 gold in copper
+    if ($char['gold'] < $cost) {
+        echo json_encode(['status' => 'error', 'message' => 'Not enough gold to create a guild (10 gold)']); exit;
+    }
+
+    $pdo->beginTransaction();
+    try {
+        $stmt = $pdo->prepare("INSERT INTO guilds (name, description, owner_id, is_open) VALUES (?, ?, ?, ?)");
+        $stmt->execute([$name, $description, $char['user_id'], $isOpen]);
+        $guildId = $pdo->lastInsertId();
+
+        $pdo->prepare("INSERT INTO guild_members (guild_id, character_id, rank) VALUES (?, ?, 'Guild Master')")->execute([$guildId, $charId]);
+        $newGold = $char['gold'] - $cost;
+        $pdo->prepare("UPDATE characters SET gold = ? WHERE id = ?")->execute([$newGold, $charId]);
+
+        $pdo->commit();
+        echo json_encode(['status' => 'success', 'message' => "Guild '{$name}' created", 'guild_id' => $guildId]); exit;
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        echo json_encode(['status' => 'error', 'message' => 'Unable to create guild: ' . $e->getMessage()]); exit;
+    }
 }
 
 if ($action === 'join_guild') {
     $guildId = (int)($input['guild_id'] ?? 0);
-    
+
     $member = $pdo->prepare("SELECT guild_id FROM guild_members WHERE character_id = ?");
     $member->execute([$charId]);
     if ($member->fetch()) {
         echo json_encode(['status' => 'error', 'message' => 'Already in a guild']); exit;
     }
-    
-    $guild = $pdo->query("SELECT * FROM guilds WHERE id = $guildId")->fetch(PDO::FETCH_ASSOC);
+
+    $guild = $pdo->prepare("SELECT * FROM guilds WHERE id = ?");
+    $guild->execute([$guildId]);
+    $guild = $guild->fetch(PDO::FETCH_ASSOC);
     if (!$guild) { echo json_encode(['status' => 'error', 'message' => 'Guild not found']); exit; }
-    
-    $rep = $pdo->prepare("SELECT points FROM reputation WHERE character_id = ?");
-    $rep->execute([$charId]);
-    $repRow = $rep->fetch(PDO::FETCH_ASSOC);
-    $repPoints = $repRow ? (int)$repRow['points'] : 0;
-    
-    if ($repPoints < $guild['required_reputation']) {
-        echo json_encode(['status' => 'error', 'message' => 'Insufficient reputation']); exit;
+
+    if ($guild['is_open']) {
+        $stmt = $pdo->prepare("INSERT INTO guild_members (guild_id, character_id, rank) VALUES (?, ?, 'Member')");
+        $stmt->execute([$guildId, $charId]);
+        echo json_encode(['status' => 'success', 'message' => "Joined {$guild['name']}!"]); exit;
     }
-    
-    $stmt = $pdo->prepare("INSERT INTO guild_members (guild_id, character_id, rank) VALUES (?, ?, 'member')");
+
+    $check = $pdo->prepare("SELECT id FROM guild_join_requests WHERE guild_id = ? AND character_id = ?");
+    $check->execute([$guildId, $charId]);
+    if ($check->fetch()) {
+        echo json_encode(['status' => 'error', 'message' => 'Join request already submitted']); exit;
+    }
+
+    $stmt = $pdo->prepare("INSERT INTO guild_join_requests (guild_id, character_id) VALUES (?, ?)");
     $stmt->execute([$guildId, $charId]);
-    
-    echo json_encode(['status' => 'success', 'message' => "Joined {$guild['name']}!"]); exit;
+    echo json_encode(['status' => 'success', 'message' => "Join request sent to {$guild['name']}."]); exit;
+}
+
+if ($action === 'leave_guild') {
+    $member = $pdo->prepare("SELECT gm.guild_id, g.owner_id, g.name FROM guild_members gm JOIN guilds g ON gm.guild_id = g.id WHERE gm.character_id = ?");
+    $member->execute([$charId]);
+    $row = $member->fetch(PDO::FETCH_ASSOC);
+    if (!$row) {
+        echo json_encode(['status' => 'error', 'message' => 'You are not in any guild']); exit;
+    }
+
+    $guildId = $row['guild_id'];
+    $guildName = $row['name'];
+
+    if ($row['owner_id'] == $char['user_id']) {
+        // If owner leaves, disband guild
+        $pdo->prepare("DELETE FROM guild_join_requests WHERE guild_id = ?")->execute([$guildId]);
+        $pdo->prepare("DELETE FROM guild_members WHERE guild_id = ?")->execute([$guildId]);
+        $pdo->prepare("DELETE FROM guilds WHERE id = ?")->execute([$guildId]);
+        echo json_encode(['status' => 'success', 'message' => "Guild '{$guildName}' disbanded."]); exit;
+    }
+
+    $pdo->prepare("DELETE FROM guild_members WHERE guild_id = ? AND character_id = ?")->execute([$guildId, $charId]);
+    echo json_encode(['status' => 'success', 'message' => "Left guild '{$guildName}'."]); exit;
+}
+
+if ($action === 'respond_guild_request') {
+    $requestId = (int)($input['request_id'] ?? 0);
+    $approve = ($input['approve'] ?? false) ? 1 : 0;
+
+    $reqStmt = $pdo->prepare("SELECT r.*, g.owner_id FROM guild_join_requests r JOIN guilds g ON r.guild_id = g.id WHERE r.id = ?");
+    $reqStmt->execute([$requestId]);
+    $request = $reqStmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$request) {
+        echo json_encode(['status' => 'error', 'message' => 'Request not found']); exit;
+    }
+
+    if ($request['owner_id'] != $char['user_id']) {
+        echo json_encode(['status' => 'error', 'message' => 'Only the guild owner can respond']); exit;
+    }
+
+    if ($approve) {
+        $pdo->prepare("INSERT INTO guild_members (guild_id, character_id, rank) VALUES (?, ?, 'Member')")->execute([$request['guild_id'], $request['character_id']]);
+        $pdo->prepare("DELETE FROM guild_join_requests WHERE id = ?")->execute([$requestId]);
+        echo json_encode(['status' => 'success', 'message' => 'Request approved']); exit;
+    } else {
+        $pdo->prepare("DELETE FROM guild_join_requests WHERE id = ?")->execute([$requestId]);
+        echo json_encode(['status' => 'success', 'message' => 'Request rejected']); exit;
+    }
 }
 
 // --- DAILY CHALLENGES ---

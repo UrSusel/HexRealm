@@ -1,6 +1,49 @@
 const mapSize = 20; 
+let latestTileCache = [];
 let playerMarker = document.createElement('div');
 playerMarker.classList.add('player');
+
+const NETWORK_SAVER_KEY = 'rpg_network_saver';
+let networkSaverEnabled = false;
+
+function loadNetworkSaver() {
+    try {
+        networkSaverEnabled = localStorage.getItem(NETWORK_SAVER_KEY) === '1';
+    } catch (_) {
+        networkSaverEnabled = false;
+    }
+}
+
+function saveNetworkSaver() {
+    try {
+        localStorage.setItem(NETWORK_SAVER_KEY, networkSaverEnabled ? '1' : '0');
+    } catch (_) {}
+}
+
+function setNetworkSaver(enabled) {
+    networkSaverEnabled = Boolean(enabled);
+    saveNetworkSaver();
+    if (enabled) {
+        showToast('🛰️ Tryb oszczędzania internetu włączony.', 'success', 1800);
+    } else {
+        showToast('🚀 Tryb normalny włączony.', 'success', 1200);
+    }
+}
+
+function getPollMs() {
+    const cfg = getGraphicsConfig();
+    const base = Math.max(1200, parseInt(cfg.multiplayerPollMs || 1500, 10));
+    return networkSaverEnabled ? Math.max(5000, base * 3) : base;
+}
+
+function getPvPPollMs() {
+    return networkSaverEnabled ? 1200 : 500;
+}
+
+let otherPlayers = {}; // Track other players by ID: { id: { x, y, name, level, marker } }
+let otherPlayerMarkers = {}; // DOM elements for other players
+let updatePlayersInterval = null;
+let otherPlayersAnimInterval = null;
 
 let HEX_WIDTH = 150;   
 let HEX_HEIGHT = 44;
@@ -102,6 +145,10 @@ let unlockableSkillIds = [];
 let skillResetCostCopper = 0;
 
 const GRAPHICS_PRESET_KEY = 'rpg_graphics_preset';
+const GRAPHICS_SHADOW_STRENGTH_KEY = 'rpg_graphics_shadow_strength';
+let shadowStrength = 0.6;
+const lightDirection = {x: 0.45, y: -1};
+
 const GRAPHICS_PRESETS = {
     very_low: {
         label: 'Very Low',
@@ -144,6 +191,9 @@ const GRAPHICS_PRESETS = {
         combatParticleCount: 6,
         floatingDamageEnabled: true,
         dayNightEnabled: true,
+        dynamicLightingEnabled: false,
+        shadingEnabled: false,
+        shadowEnabled: false,
         multiplayerPollMs: 2000,
         animationSpeedMs: 125,
         otherPlayersAnimEnabled: true
@@ -159,8 +209,29 @@ const GRAPHICS_PRESETS = {
         combatParticleCount: 12,
         floatingDamageEnabled: true,
         dayNightEnabled: true,
+        dynamicLightingEnabled: true,
+        shadingEnabled: false,
+        shadowEnabled: false,
         multiplayerPollMs: 1500,
         animationSpeedMs: 100,
+        otherPlayersAnimEnabled: true
+    },
+    max: {
+        label: 'Max',
+        windEnabled: true,
+        windDelayMin: 120,
+        windDelayMax: 350,
+        windBurstMin: 3,
+        windBurstMax: 9,
+        smokeParticlesPerCity: 4,
+        combatParticleCount: 18,
+        floatingDamageEnabled: true,
+        dayNightEnabled: true,
+        dynamicLightingEnabled: true,
+        shadingEnabled: true,
+        shadowEnabled: true,
+        multiplayerPollMs: 1000,
+        animationSpeedMs: 80,
         otherPlayersAnimEnabled: true
     }
 };
@@ -173,14 +244,21 @@ function isValidGraphicsPreset(value) {
 
 function detectAutoGraphicsPreset() {
     const cores = parseInt(navigator.hardwareConcurrency || 4, 10);
-    const memory = parseFloat(navigator.deviceMemory || 4);
+    let memory = parseFloat(navigator.deviceMemory || 8);
+    if (!Number.isFinite(memory) || memory <= 0) memory = 8;
     const dpr = Math.max(1, parseFloat(window.devicePixelRatio || 1));
     const pixels = Math.max(1, window.innerWidth * window.innerHeight * dpr * dpr);
 
-    if (isMobile || cores <= 2 || memory <= 2 || pixels > 4200000) return 'very_low';
-    if (cores <= 4 || memory <= 4 || pixels > 2800000) return 'low';
-    if (cores <= 6 || memory <= 8) return 'medium';
-    return 'high';
+    const isVeryLow = isMobile || cores <= 2 || memory <= 3;
+    const isLow = cores <= 4 || memory <= 5;
+    const isHigh = cores >= 6 && memory >= 8;
+    const isUltra = cores >= 8 && memory >= 12;
+
+    if (isVeryLow || pixels > 10000000) return 'very_low';
+    if (isLow || pixels > 7000000) return 'low';
+    if (isUltra) return 'max';
+    if (isHigh) return 'high';
+    return 'medium';
 }
 
 function resolveGraphicsPresetName(preset = graphicsPreset) {
@@ -209,6 +287,12 @@ function getGraphicsPresetDescription() {
     if (graphicsPreset === 'medium') {
         return `${cfg.label}: balanced quality and performance.`;
     }
+    if (graphicsPreset === 'high') {
+        return `${cfg.label}: high details, shading and effects enabled.`;
+    }
+    if (graphicsPreset === 'max') {
+        return `${cfg.label}: maximum quality with dynamic lighting and shadows.`;
+    }
     return `${cfg.label}: full effects and smoothest visuals.`;
 }
 
@@ -219,6 +303,45 @@ function loadGraphicsPreset() {
             graphicsPreset = saved;
         }
     } catch {}
+}
+
+function loadGraphicsLightingSettings() {
+    try {
+        const savedStrength = localStorage.getItem(GRAPHICS_SHADOW_STRENGTH_KEY);
+        if (savedStrength !== null) {
+            shadowStrength = Math.max(0.1, Math.min(1, parseFloat(savedStrength) || 0.6));
+        }
+    } catch {}
+}
+
+function saveGraphicsLightingSettings() {
+    try {
+        localStorage.setItem(GRAPHICS_SHADOW_STRENGTH_KEY, String(shadowStrength));
+    } catch {}
+}
+
+function getLightDirectionVector() {
+    return lightDirection;
+}
+
+function syncLightingSettingsUI() {
+    const strengthRange = document.getElementById('shadow-strength-range');
+    if (strengthRange) strengthRange.value = String(Math.round(shadowStrength * 100));
+
+    const strengthLabel = document.getElementById('shadow-strength-value');
+    if (strengthLabel) strengthLabel.innerText = `${Math.round(shadowStrength * 100)}%`;
+}
+
+function setShadowStrength(val) {
+    const value = Math.max(0.1, Math.min(1, Number(val) / 100));
+    shadowStrength = value;
+    saveGraphicsLightingSettings();
+    syncLightingSettingsUI();
+    renderMapTiles(latestTileCache || []);
+}
+
+function setLightDirection(value) {
+    // no-op; direction is fixed
 }
 
 function stopWindEffect() {
@@ -253,11 +376,16 @@ function applyGraphicsPreset(preset, save = true) {
 
     updateDayNightCycle();
 
+    if (latestTileCache && latestTileCache.length > 0) {
+        renderMapTiles(latestTileCache);
+    }
+
     if (animationInterval) startPlayerAnimation();
     if (combatAnimInterval) startCombatAnimations();
     if (updatePlayersInterval) startMultiplayerPolling();
 
     syncGraphicsSettingsUI();
+    syncLightingSettingsUI();
 }
 
 function setGraphicsPreset(value) {
@@ -320,6 +448,7 @@ function startGame() {
     const btn = document.getElementById('music-btn');
     if(btn) { btn.innerText = '🔊'; btn.classList.add('playing'); }
     
+    syncNetworkSaverUI();
     // Show mobile portrait disclaimer on mobile devices
     if (isMobile) {
         const disclaimer = document.getElementById('mobile-disclaimer-modal');
@@ -328,7 +457,9 @@ function startGame() {
         }
     }
     
+    loadGraphicsLightingSettings();
     applyGraphicsPreset(graphicsPreset, false);
+    syncLightingSettingsUI();
     initGame();
     updateDayNightCycle();
     setInterval(updateDayNightCycle, 60000);
@@ -729,6 +860,7 @@ function renderMapTiles(tiles) {
     if (!playerMarker.parentNode) mapDiv.appendChild(playerMarker);
 
     const sourceTiles = Array.isArray(tiles) ? tiles : [];
+    latestTileCache = sourceTiles;
     const tilesToRender = (resolvedPreset === 'very_low')
         ? sourceTiles.filter(t => {
             const tx = parseInt(t.x, 10);
@@ -775,6 +907,39 @@ function renderMapTiles(tiles) {
         tile.style.left = posX + 'px';
         tile.style.top = posY + 'px';
         tile.style.zIndex = parseInt(t.y);
+
+        const playerX = parseInt(gameState.x || 0, 10);
+        const playerY = parseInt(gameState.y || 0, 10);
+        const tx = parseInt(t.x, 10);
+        const ty = parseInt(t.y, 10);
+        const dx = tx - playerX;
+        const dy = ty - playerY;
+        const distance = Math.hypot(dx, dy);
+
+        let lightAdjust = 1;
+        if (cfg.dynamicLightingEnabled) {
+            const lightRadius = 9;
+            const base = Math.max(0.42, 1 - (distance / (lightRadius * 1.4)));
+            lightAdjust = Math.min(1, base + 0.18);
+        }
+
+        const shadowCastingTypes = new Set(['mountain', 'forest', 'city_capital', 'city_village', 'hills', 'hills2']);
+        if (cfg.shadingEnabled && shadowCastingTypes.has(t.type)) {
+            const dir = getLightDirectionVector();
+            let stretch = 1;
+            if (t.type === 'mountain' || t.type === 'hills2') {
+                stretch = 2.8;
+            } else if (t.type === 'hills') {
+                stretch = 1.7;
+            }
+            const shadowX = ((dir.x * 8) + (dx * 0.16)) * stretch;
+            const shadowY = ((dir.y * 8) + (dy * 0.16)) * stretch;
+            const blur = Math.max(0.6, 3 - (shadowStrength * 1.2));
+            const shadowOpacity = Math.min(0.92, 0.2 + shadowStrength * 0.55);
+            tile.style.filter = `brightness(${lightAdjust.toFixed(2)}) drop-shadow(${shadowX.toFixed(1)}px ${shadowY.toFixed(1)}px ${blur.toFixed(1)}px rgba(0,0,0,${shadowOpacity.toFixed(2)}))`;
+        } else {
+            tile.style.filter = `brightness(${lightAdjust.toFixed(2)})`;
+        }
 
         tile.dataset.x = t.x; 
         tile.dataset.y = t.y;
@@ -1948,6 +2113,7 @@ function toggleSettings() {
     if (isOpening) {
         syncMusicSettingsUI();
         syncGraphicsSettingsUI();
+        syncNetworkSaverUI();
         const help = document.getElementById('keyboard-shortcuts-help');
         if (help) help.style.display = 'none';
     }
@@ -2018,6 +2184,23 @@ function syncMusicSettingsUI() {
     updateNowPlaying();
     setVolume(explorationAudio.volume);
 }
+function syncNetworkSaverUI() {
+    const el = document.getElementById('network-saver-toggle');
+    if (el) {
+        el.checked = networkSaverEnabled;
+    }
+    const label = document.getElementById('network-saver-label');
+    if (label) {
+        label.innerText = networkSaverEnabled ? '📶 Network saver: ON' : '📶 Network saver: OFF';
+    }
+}
+
+function toggleNetworkSaver() {
+    setNetworkSaver(!networkSaverEnabled);
+    syncNetworkSaverUI();
+    if (networkSaverEnabled) stopMultiplayerPolling(); else startMultiplayerPolling();
+}
+
 function setMusicLoop(enabled) {
     loopCurrentTrack = Boolean(enabled);
     explorationAudio.loop = loopCurrentTrack;
@@ -2405,6 +2588,7 @@ function preloadAssets() {
 
 // On initial page load, check for remembered login
 document.addEventListener('DOMContentLoaded', () => {
+    loadNetworkSaver();
     loadGraphicsPreset();
     checkRememberedLogin();
     populateMusicList();
@@ -2417,17 +2601,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-let otherPlayers = {}; // Track other players by ID: { id: { x, y, name, level, marker } }
-let otherPlayerMarkers = {}; // DOM elements for other players
-let updatePlayersInterval = null;
-let otherPlayersAnimInterval = null;
-
 // --- MULTIPLAYER POLLING ---
 
 function startMultiplayerPolling() {
     if (updatePlayersInterval) clearInterval(updatePlayersInterval);
-    const cfg = getGraphicsConfig();
-    const pollMs = Math.max(1000, parseInt(cfg.multiplayerPollMs || 1500, 10));
+    const pollMs = getPollMs();
     updateOtherPlayers(); // Call once immediately
     updatePlayersInterval = setInterval(updateOtherPlayers, pollMs);
     startOtherPlayersAnimationLoop();
@@ -2476,6 +2654,9 @@ function stopOtherPlayersAnimationLoop() {
 }
 
 async function updateOtherPlayers() {
+    if (networkSaverEnabled && document.hidden) {
+        return;
+    }
     try {
         const data = await apiPost('get_other_players');
         if (data.status === 'success') {
@@ -2817,6 +2998,10 @@ window.respondDuel = async function(reqId, response) {
 
 async function pollPvPState() {
     if (!gameState.is_pvp || !gameState.in_combat) return;
+    if (networkSaverEnabled && document.hidden) {
+        setTimeout(pollPvPState, getPvPPollMs());
+        return;
+    }
     if (pvpPollInFlight) return;
     pvpPollInFlight = true;
     
@@ -2865,7 +3050,7 @@ async function pollPvPState() {
         pvpPollInFlight = false;
     }
     
-    setTimeout(pollPvPState, 500);
+    setTimeout(pollPvPState, getPvPPollMs());
 }
 
 function canPvPAct() {
@@ -2962,21 +3147,18 @@ function updateDayNightCycle() {
     }
     
     const hour = new Date().getHours();
-    let color = 'rgba(0, 0, 0, 0)'; // Dzień (domyślnie)
-    let isNight = false;
 
-    if (hour >= 21 || hour < 5) {
-        color = 'rgba(0, 5, 20, 0.6)'; // Noc
-        isNight = true;
-    } else if (hour >= 5 && hour < 8) {
-        color = 'rgba(200, 100, 50, 0.2)'; // Świt
-    } else if (hour >= 17 && hour < 21) {
-        color = 'rgba(80, 40, 100, 0.3)'; // Zmierzch
+    let color = 'rgba(0, 0, 0, 0)'; // Day default
+
+    // Only sunset effect (18:00-20:00). No full night.
+    if (hour >= 18 && hour < 20) {
+        const progress = (hour - 18) / 2; // 0..1
+        const alpha = 0.06 + (0.08 * Math.sin(progress * Math.PI)); // Much subtler
+        color = `rgba(255, 170, 130, ${alpha.toFixed(3)})`;
     }
-    
+
     overlay.style.backgroundColor = color;
-    if (isNight) document.body.classList.add('night-mode');
-    else document.body.classList.remove('night-mode');
+    document.body.classList.remove('night-mode');
 }
 
 // --- SHOP SYSTEM ---
@@ -3727,37 +3909,95 @@ async function openGuildsModal() {
 
 async function loadGuilds() {
     const res = await apiPost('get_guilds');
-    
-    if (res.status === 'success') {
-        const container = document.getElementById('guilds-content');
-        const repVal = document.getElementById('guild-reputation-val');
-        
-        repVal.textContent = res.reputation;
-        
+    const container = document.getElementById('guilds-content');
+
+    if (res.status !== 'success') {
+        showToast(res.message || 'Failed to load guilds', 'error');
+        return;
+    }
+
+    const repVal = document.getElementById('guild-reputation-val');
+    repVal.textContent = res.reputation;
+
+    let html = '';
+
+    if (!res.current_guild_id) {
+        html += `
+            <div style="padding:12px; border:1px solid #6b4f2f; border-radius:6px; margin-bottom:10px; text-align:center; background:#1e1e1e;">
+                <div style="font-weight:bold; color:#ffd700; margin-bottom:8px;">Create Your Guild (10 gold)</div>
+                <input id="guild-name-input" placeholder="Guild Name" style="width:100%; margin-bottom:6px; padding:6px; border-radius:4px; border:1px solid #555;background:#111; color:#fff;">
+                <textarea id="guild-description-input" placeholder="Guild Description" style="width:100%; margin-bottom:6px; padding:6px; border-radius:4px; border:1px solid #555; background:#111; color:#fff; height:45px;"></textarea>
+                <select id="guild-open-select" style="width:100%; margin-bottom:10px; padding:6px; border-radius:4px; border:1px solid #555; background:#111; color:#fff;">
+                    <option value="1">Open - Join instantly</option>
+                    <option value="0">Closed - Requires request</option>
+                </select>
+                <div style="display:flex; justify-content:center;"><button class="combat-btn" style="padding:8px 16px; min-width:180px;" onclick="createGuild()">Create Guild</button></div>
+            </div>
+        `;
+
         if (res.guilds.length === 0) {
-            container.innerHTML = '<div style="text-align:center; color:#666; padding:20px;">No guilds available.</div>';
-            return;
+            html += '<div style="text-align:center; color:#ccc; padding:12px; border:1px dashed #555; border-radius:6px;">No guilds available yet.</div>';
+        } else {
+            html += '<div style="margin-top:6px; font-size:13px; color:#ddd; margin-bottom:8px;">Existing guilds (for join/request):</div>';
+            res.guilds.forEach(guild => {
+                const border = guild.is_open ? '#29b6f6' : '#ffd54f';
+                const status = guild.is_open ? 'Open' : 'Closed';
+                const joinButton = guild.can_join_directly ? `<button class="combat-btn" style="padding:5px 10px; font-size:12px;" onclick="joinGuild(${guild.id})">Join</button>` :
+                    guild.can_request ? `<button class="combat-btn" style="padding:5px 10px; font-size:12px;" onclick="joinGuild(${guild.id})">Request</button>` :
+                    (guild.requested ? '<span style="color:#f4d58d; font-size:12px;">Requested</span>' : '<span style="color:#999; font-size:12px;">No action</span>');
+
+                html += `<div style="background:#222; border:1px solid #444; border-left:4px solid ${border}; border-radius:5px; padding:8px; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
+                    <div style="font-size:13px; color:#fff;"><strong>${guild.name}</strong><br><span style='font-size:11px; color:#ccc;'>${guild.description || 'Brak opisu'}</span></div>
+                    <div style="text-align:right;">${status}<br>${joinButton}</div>
+                </div>`;
+            });
         }
-        
-        container.innerHTML = '';
-        res.guilds.forEach(guild => {
-            const div = document.createElement('div');
-            div.style.cssText = "background:#252525; padding:15px; margin-bottom:10px; border-radius:5px; border-left:3px solid " + 
-                (guild.is_member ? '#4caf50' : guild.can_join ? '#ffd700' : '#666');
-            
-            div.innerHTML = `
-                <div style="font-weight:bold; color:#ffd700; font-size:16px; margin-bottom:5px;">${guild.name}</div>
-                <div style="color:#ccc; font-size:13px; margin-bottom:10px;">${guild.description}</div>
-                <div style="color:#888; font-size:12px; margin-bottom:10px;">Required Reputation: ${guild.required_reputation}</div>
-                ${guild.is_member ? 
-                    '<div style="color:#4caf50; font-weight:bold;">✓ Member</div>' : 
-                    guild.can_join ? 
-                        `<button onclick="joinGuild(${guild.id})" class="combat-btn" style="padding:8px 15px; font-size:12px; background:#4caf50;">Join Guild</button>` :
-                        `<div style="color:#666; font-size:12px;">Insufficient reputation (${res.reputation}/${guild.required_reputation})</div>`
-                }
-            `;
-            container.appendChild(div);
-        });
+    } else {
+        const g = res.current_guild || { name: 'Guild', description: '' };
+        html += `<div style="padding:10px; border:1px solid #6b4f2f; border-radius:6px; margin-bottom:10px; background:#1e1e1e;">
+            <div style="font-weight:bold; color:#ffd700; font-size:16px; margin-bottom:6px;">Guild Panel: ${g.name}</div>
+            <div style="color:#ccc; margin-bottom:6px;">${g.description || 'Brak opisu gildii.'}</div>
+            <div style="color:#ccc; font-size:13px; margin-bottom:8px;">Your rank: <strong>${res.current_rank || 'Member'}</strong></div>
+            <div style="font-size:13px; color:#ddd; margin-bottom:6px;">Members:</div>`;
+        if (res.current_members && res.current_members.length > 0) {
+            res.current_members.forEach(m => {
+                html += `<div style="padding:5px 8px; background:#222; border:1px solid #444; border-radius:4px; margin-bottom:4px; display:flex; justify-content:space-between; align-items:center;">
+                    <div><strong>${m.character_name}</strong> <span style="color:#999; font-size:11px;">(${m.rank})</span></div>
+                    <div style="color:#aaa; font-size:11px;">Joined ${m.joined_at.split(' ')[0]}</div>
+                </div>`;
+            });
+        } else {
+            html += '<div style="color:#aaa; margin-bottom:8px;">Brak członków.</div>';
+        }
+
+        html += '<div style="display:flex; justify-content:center; margin-top:10px;"><button class="combat-btn" style="padding:6px 12px; background:#b23939; color:white;" onclick="leaveGuild()">Leave Guild</button></div>';
+
+        if (res.pending_requests && res.pending_requests.length > 0) {
+            html += '<div style="font-size:13px; color:#f7b32b; margin-top:8px;">Pending join requests</div>';
+            res.pending_requests.forEach(req => {
+                html += `<div style="margin-top:4px; display:flex; justify-content:space-between; align-items:center; background:#222; border:1px solid #444; border-radius:4px; padding:5px;">
+                    <span style="font-size:12px;">${req.character_name}</span>
+                    <span><button class="combat-btn" style="padding:4px 8px; margin-right:3px;" onclick="respondGuildRequest(${req.id}, true)">✓</button><button class="combat-btn" style="padding:4px 8px;" onclick="respondGuildRequest(${req.id}, false)">✕</button></span>
+                </div>`;
+            });
+        }
+        html += '</div>';
+    }
+
+    container.innerHTML = html;
+}
+
+async function createGuild() {
+    const name = document.getElementById('guild-name-input').value;
+    const description = document.getElementById('guild-description-input').value;
+    const isOpen = document.getElementById('guild-open-select').value;
+
+    const res = await apiPost('create_guild', { name, description, is_open: isOpen });
+    if (res.status === 'success') {
+        showToast(res.message, 'success');
+        await loadGuilds();
+    } else {
+        showToast(res.message, 'error');
     }
 }
 
@@ -3767,6 +4007,26 @@ async function joinGuild(guildId) {
         showToast(res.message, 'success');
         await loadGuilds();
         playSfx('levelup');
+    } else {
+        showToast(res.message, 'error');
+    }
+}
+
+async function leaveGuild() {
+    const res = await apiPost('leave_guild', {});
+    if (res.status === 'success') {
+        showToast(res.message, 'success');
+        await loadGuilds();
+    } else {
+        showToast(res.message, 'error');
+    }
+}
+
+async function respondGuildRequest(requestId, approve) {
+    const res = await apiPost('respond_guild_request', { request_id: requestId, approve });
+    if (res.status === 'success') {
+        showToast(res.message, 'success');
+        await loadGuilds();
     } else {
         showToast(res.message, 'error');
     }

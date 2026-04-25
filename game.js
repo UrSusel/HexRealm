@@ -36,7 +36,6 @@ let inCombatMode = false;
 let combatState = null;
 let lowEnergyWarningShown = false;
 let isProcessingTurn = false;
-let combatCameraOverviewUntil = 0;
 let combatCameraState = { x: 0, y: 0, scale: 1, initialized: false };
 let mapScaleCache = { w: 0, h: 0, portrait: null, landscape: null };
 let isMobile = Math.min(window.innerWidth, window.innerHeight) <= 900;
@@ -65,6 +64,7 @@ waitingAudio.crossOrigin = 'anonymous';
 combatAudio.loop = true;
 waitingAudio.loop = true;
 let isPlaying = false;
+let userStoppedMusic = false;
 explorationAudio.volume = 0.15;
 combatAudio.volume = 0.15;
 waitingAudio.volume = 0.15;
@@ -376,8 +376,11 @@ function startGame() {
     document.getElementById('game-layout').style.display = 'flex';
     applyResponsiveStyles();
     stopWaitingMusic();
+    
+    if (!userStoppedMusic) {
+        isPlaying = true;
+    }
     playRandomTrack();
-    isPlaying = false;
     
     // Inject Gold Display if missing
     if (!document.getElementById('gold-display')) {
@@ -805,17 +808,6 @@ function renderMapTiles(tiles) {
     const smokeCount = Math.max(0, parseInt(cfg.smokeParticlesPerCity || 0, 10));
     const resolvedPreset = resolveGraphicsPresetName();
 
-    if (mapDiv.dataset.musicUnlock !== '1') {
-        mapDiv.dataset.musicUnlock = '1';
-        mapDiv.addEventListener('pointerdown', () => {
-            if (!isPlaying && !inCombatMode) playMusic();
-        });
-    }
-
-    // Remove old tiles but keep player marker
-    mapDiv.querySelectorAll('.tile').forEach(e => e.remove());
-    if (!playerMarker.parentNode) mapDiv.appendChild(playerMarker);
-
     const sourceTiles = Array.isArray(tiles) ? tiles : [];
     latestTileCache = sourceTiles;
     const tilesToRender = (resolvedPreset === 'very_low')
@@ -828,42 +820,68 @@ function renderMapTiles(tiles) {
         })
         : sourceTiles;
 
+    const existingTiles = new Map();
+    mapDiv.querySelectorAll('.tile').forEach(e => {
+        existingTiles.set(`${e.dataset.x}_${e.dataset.y}`, e);
+    });
+
+    const newKeys = new Set();
+    const moveDuration = window.currentMoveDuration || 0;
+
     tilesToRender.forEach(t => { 
-        const tile = document.createElement('div');
-        tile.className = `tile ${t.type}`;
-        
-        let offsetX = (parseInt(t.y) % 2 !== 0) ? (HEX_WIDTH / 2) : 0;
-        let posX = (parseInt(t.x) * HEX_WIDTH) + offsetX;
-        let posY = (parseInt(t.y) * HEX_HEIGHT);
-        if (t.type === 'mountain') posY -= 20; 
-        if (t.type === 'city_capital') {
-            posY -= 5;
-            for(let i=0; i<smokeCount; i++) {
-                const s = document.createElement('div');
-                s.className = 'smoke-particle';
-                s.style.left = '60px'; s.style.top = '40px'; 
-                s.style.animationDelay = (i * 0.8) + 's';
-                s.style.animationDuration = (2.8 + Math.random() * 1.2).toFixed(2) + 's';
-                s.style.setProperty('--smoke-drift', `${6 + Math.random() * 18}px`);
-                tile.appendChild(s);
+        const key = `${t.x}_${t.y}`;
+        newKeys.add(key);
+
+        let tile = existingTiles.get(key);
+        let isNew = false;
+
+        if (!tile) {
+            tile = document.createElement('div');
+            tile.className = `tile ${t.type}`;
+            
+            let offsetX = (parseInt(t.y) % 2 !== 0) ? (HEX_WIDTH / 2) : 0;
+            let posX = (parseInt(t.x) * HEX_WIDTH) + offsetX;
+            let posY = (parseInt(t.y) * HEX_HEIGHT);
+            if (t.type === 'mountain' || t.type === 'wmountain') posY -= 20; 
+            if (t.type === 'city_capital') {
+                posY -= 5;
+                for(let i=0; i<smokeCount; i++) {
+                    const s = document.createElement('div');
+                    s.className = 'smoke-particle';
+                    s.style.left = '60px'; s.style.top = '40px'; 
+                    s.style.animationDelay = (i * 0.8) + 's';
+                    s.style.animationDuration = (2.8 + Math.random() * 1.2).toFixed(2) + 's';
+                    s.style.setProperty('--smoke-drift', `${6 + Math.random() * 18}px`);
+                    tile.appendChild(s);
+                }
+            }
+            if (t.type === 'city_village') {
+                posY -= 10;
+                for(let i=0; i<smokeCount; i++) {
+                    const s = document.createElement('div');
+                    s.className = 'smoke-particle';
+                    s.style.left = '75px'; s.style.top = '50px'; 
+                    s.style.animationDelay = (i * 0.8) + 's';
+                    s.style.animationDuration = (2.8 + Math.random() * 1.2).toFixed(2) + 's';
+                    s.style.setProperty('--smoke-drift', `${6 + Math.random() * 18}px`);
+                    tile.appendChild(s);
+                }
+            }
+            
+            tile.style.left = posX + 'px';
+            tile.style.top = posY + 'px';
+            tile.style.zIndex = parseInt(t.y);
+            tile.dataset.x = t.x; 
+            tile.dataset.y = t.y;
+            tile.onclick = () => attemptMove(t.x, t.y);
+            mapDiv.appendChild(tile);
+            isNew = true;
+        } else {
+            const expectedClass = `tile ${t.type}`;
+            if (tile.className !== expectedClass) {
+                tile.className = expectedClass;
             }
         }
-        if (t.type === 'city_village') {
-            posY -= 10; // Moved up by 10px total (5px more than before)
-            for(let i=0; i<smokeCount; i++) {
-                const s = document.createElement('div');
-                s.className = 'smoke-particle';
-                s.style.left = '75px'; s.style.top = '50px'; 
-                s.style.animationDelay = (i * 0.8) + 's';
-                s.style.animationDuration = (2.8 + Math.random() * 1.2).toFixed(2) + 's';
-                s.style.setProperty('--smoke-drift', `${6 + Math.random() * 18}px`);
-                tile.appendChild(s);
-            }
-        }
-        
-        tile.style.left = posX + 'px';
-        tile.style.top = posY + 'px';
-        tile.style.zIndex = parseInt(t.y);
 
         const playerX = parseInt(gameState.x || 0, 10);
         const playerY = parseInt(gameState.y || 0, 10);
@@ -871,38 +889,55 @@ function renderMapTiles(tiles) {
         const ty = parseInt(t.y, 10);
         const dx = tx - playerX;
         const dy = ty - playerY;
-        const distance = Math.hypot(dx, dy);
+
+        const pOffsetX = (playerY % 2 !== 0) ? (HEX_WIDTH / 2) : 0;
+        const pPosX = (playerX * HEX_WIDTH) + pOffsetX;
+        const pPosY = (playerY * HEX_HEIGHT);
+
+        const tOffsetX = (ty % 2 !== 0) ? (HEX_WIDTH / 2) : 0;
+        const tPosX = (tx * HEX_WIDTH) + tOffsetX;
+        const tPosY = (ty * HEX_HEIGHT);
+
+        const pxDistance = Math.hypot(tPosX - pPosX, tPosY - pPosY);
 
         let lightAdjust = 1;
         if (cfg.dynamicLightingEnabled) {
-            const lightRadius = 9;
-            const base = Math.max(0.42, 1 - (distance / (lightRadius * 1.4)));
+            const lightRadiusPx = 750;
+            const base = Math.max(0.42, 1 - (pxDistance / lightRadiusPx));
             lightAdjust = Math.min(1, base + 0.18);
         }
 
-        const shadowCastingTypes = new Set(['mountain', 'forest', 'city_capital', 'city_village', 'hills', 'hills2']);
+        const shadowCastingTypes = new Set(['mountain', 'forest', 'city_capital', 'city_village', 'hills', 'hills2', 'wmountain', 'wforest', 'whills', 'whills2']);
+        let newFilter = '';
         if (cfg.shadingEnabled && shadowCastingTypes.has(t.type)) {
             const dir = getLightDirectionVector();
             let stretch = 1;
-            if (t.type === 'mountain' || t.type === 'hills2') {
-                stretch = 2.8;
-            } else if (t.type === 'hills') {
-                stretch = 1.7;
-            }
+            if (t.type === 'mountain' || t.type === 'hills2' || t.type === 'wmountain' || t.type === 'whills2') stretch = 2.8;
+            else if (t.type === 'hills' || t.type === 'whills') stretch = 1.7;
+            
             const shadowX = ((dir.x * 8) + (dx * 0.16)) * stretch;
             const shadowY = ((dir.y * 8) + (dy * 0.16)) * stretch;
             const blur = Math.max(0.6, 3 - (shadowStrength * 1.2));
             const shadowOpacity = Math.min(0.92, 0.2 + shadowStrength * 0.55);
-            tile.style.filter = `brightness(${lightAdjust.toFixed(2)}) drop-shadow(${shadowX.toFixed(1)}px ${shadowY.toFixed(1)}px ${blur.toFixed(1)}px rgba(0,0,0,${shadowOpacity.toFixed(2)}))`;
+            newFilter = `brightness(${lightAdjust.toFixed(2)}) drop-shadow(${shadowX.toFixed(1)}px ${shadowY.toFixed(1)}px ${blur.toFixed(1)}px rgba(0,0,0,${shadowOpacity.toFixed(2)}))`;
         } else {
-            tile.style.filter = `brightness(${lightAdjust.toFixed(2)})`;
+            newFilter = `brightness(${lightAdjust.toFixed(2)})`;
         }
 
-        tile.dataset.x = t.x; 
-        tile.dataset.y = t.y;
-        tile.onclick = () => attemptMove(t.x, t.y);
-        mapDiv.appendChild(tile);
+        if (!isNew && moveDuration > 0 && cfg.dynamicLightingEnabled) {
+            tile.style.transition = `filter ${moveDuration}s linear`;
+        } else {
+            tile.style.transition = 'none';
+        }
+        
+        tile.style.filter = newFilter;
     });
+
+    existingTiles.forEach((tile, key) => {
+        if (!newKeys.has(key)) tile.remove();
+    });
+
+    if (!playerMarker.parentNode) mapDiv.appendChild(playerMarker);
 }
 
 function updatePlayerVisuals(x, y, isInstant = false) {
@@ -920,6 +955,8 @@ function updatePlayerVisuals(x, y, isInstant = false) {
             playerMarker.classList.remove('in-light');
         }
 
+            let transitionDuration = 0;
+
         if (isInstant) {
             playerMarker.style.transition = 'none';
             playerMarker.style.left = targetPixelX + 'px';
@@ -933,6 +970,7 @@ function updatePlayerVisuals(x, y, isInstant = false) {
             const deltaY = targetPixelY - currentTop;
             const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
             const duration = distance / MOVEMENT_SPEED_PX; 
+                transitionDuration = duration;
 
             setAnimationState('run');
             
@@ -943,12 +981,13 @@ function updatePlayerVisuals(x, y, isInstant = false) {
             if (moveTimeout) clearTimeout(moveTimeout);
             moveTimeout = setTimeout(() => { setAnimationState('idle'); }, duration * 1000);
         }
+        window.currentMoveDuration = transitionDuration;
         playerMarker.style.zIndex = 1300; 
-        centerMapOnPlayer(tLeft, tTop);
+            centerMapOnPlayer(tLeft, tTop, transitionDuration);
     }
 }
 
-function centerMapOnPlayer(pixelX, pixelY) {
+function centerMapOnPlayer(pixelX, pixelY, transitionDuration = 0) {
     const panel = document.getElementById('left-panel');
     const map = document.getElementById('map');
     if (!panel || !map) return;
@@ -976,6 +1015,14 @@ function centerMapOnPlayer(pixelX, pixelY) {
     // Calculate center based on scale (transform-origin is 0 0)
     const moveX = (viewportWidth / 2) - (pixelX + 64) * scale;
     const moveY = (viewportHeight / 2) + offsetY - (pixelY + 64) * scale;
+
+    if (transitionDuration > 0) {
+        const cameraDuration = transitionDuration + 0.65;
+        map.style.transition = `transform ${cameraDuration}s ease-out`;
+        map.style.willChange = 'transform';
+    } else {
+        map.style.transition = 'none';
+    }
 
     map.style.transform = `translate(${moveX}px, ${moveY}px) scale(${scale})`;
 }
@@ -1261,7 +1308,6 @@ function toggleCombatMode(active, currentHp, enemyHp = 0) {
         updateCombatBackground();
         startCombatAnimations();
         mapDiv.style.display = 'none'; combatScreen.style.display = 'flex';
-        combatCameraOverviewUntil = Date.now() + 1200;
         let existingContainer = document.getElementById('combat-arena-container');
         if (existingContainer) existingContainer.remove();
         let container = document.createElement('div');
@@ -1300,7 +1346,7 @@ function toggleCombatMode(active, currentHp, enemyHp = 0) {
         combatState = null;
         gameState.is_pvp = false;
         stopCombatAnimations();
-        combatCameraOverviewUntil = 0;
+        combatCameraState.initialized = false;
         loadAndDrawMap();
         updatePlayerVisuals(gameState.x, gameState.y, true);
         startMultiplayerPolling(); // Resume polling after combat
@@ -2083,9 +2129,13 @@ function toggleShortcutHelp() {
 
 function playMusic() {
     if (isPlaying) return;
+    userStoppedMusic = false;
+    waitingAudio.pause();
     if (inCombatMode) {
+        explorationAudio.pause();
         combatAudio.play().catch(() => {});
     } else {
+        combatAudio.pause();
         if (!explorationAudio.src) {
             if (currentTrackIndex >= 0) setMusicTrack(currentTrackIndex);
             else playRandomTrack();
@@ -2098,6 +2148,7 @@ function playMusic() {
 function stopMusic() {
     explorationAudio.pause(); combatAudio.pause(); waitingAudio.pause();
     isPlaying = false;
+    userStoppedMusic = true;
 }
 
 function setVolume(val) {
@@ -2153,7 +2204,11 @@ function setMusicTrack(value) {
     explorationAudio.src = playlist[currentTrackIndex];
     explorationAudio.loop = loopCurrentTrack;
     updateNowPlaying();
-    // Don't autoplay - require user interaction
+    if (isPlaying && !userStoppedMusic && !inCombatMode) {
+        explorationAudio.play().catch(() => {
+            isPlaying = false;
+        });
+    }
 }
 function playRandomTrack() {
     if (!playlist.length) return;
@@ -2163,7 +2218,11 @@ function playRandomTrack() {
     explorationAudio.src = playlist[currentTrackIndex];
     explorationAudio.loop = loopCurrentTrack;
     updateNowPlaying();
-    // Don't autoplay - require user interaction
+    if (isPlaying && !userStoppedMusic && !inCombatMode) {
+        explorationAudio.play().catch(() => {
+            isPlaying = false;
+        });
+    }
     syncMusicSettingsUI();
 }
 function handleTrackEnded() {
@@ -2172,6 +2231,8 @@ function handleTrackEnded() {
 explorationAudio.addEventListener('ended', handleTrackEnded);
 
 function playWaitingMusic() {
+    explorationAudio.pause();
+    combatAudio.pause();
     waitingAudio.currentTime = 0;
     waitingAudio.play().catch(() => {});
 }
@@ -2188,16 +2249,10 @@ function showAuthModal() {
     const authModal = document.getElementById('auth-modal');
     if (authModal) {
         authModal.style.display = 'flex';
-        // Autoplay may be blocked; play on first user gesture
-        const onAuthInteract = () => {
-            playWaitingMusic();
-            authModal.removeEventListener('pointerdown', onAuthInteract);
-        };
-        authModal.addEventListener('pointerdown', onAuthInteract, { once: true });
     }
     document.getElementById('login-form').style.display = 'block';
     document.getElementById('register-form').style.display = 'none';
-    playWaitingMusic();
+    if (!userStoppedMusic) playWaitingMusic();
     // Ensure game-layout is hidden when auth modal is shown
     const gameLayout = document.getElementById('game-layout');
     if (gameLayout) {
@@ -2479,7 +2534,8 @@ function preloadAssets() {
         ...playerSprites.idle, ...playerSprites.run,
         'assets/ui/Cursor_01.png', 'assets/ui/Cursor_02.png', 'assets/ui/sword.png',
         'assets/ui/BigBar_left.png', 'assets/ui/BigBar_middle.png', 'assets/ui/BigBar_right.png', 'assets/ui/BigBar_Fill.png',
-        'img/grass.png', 'img/grass2.png', 'img/forest.png', 'img/mountain.png', 'img/hills.png', 'img/hills2.png', 'img/farmlands.png', 'img/water.png', 'img/castle.png', 'img/vilage.png'
+        'img/grass.png', 'img/grass2.png', 'img/forest.png', 'img/mountain.png', 'img/hills.png', 'img/hills2.png', 'img/farmlands.png', 'img/water.png', 'img/castle.png', 'img/vilage.png',
+        'img/winter/wgrass.png', 'img/winter/wgrass2.png', 'img/winter/forest.png', 'img/winter/wmountain.png', 'img/winter/hills.png', 'img/winter/hills2.png', 'img/winter/wfarmlands.png', 'img/winter/wwater.png'
     ];
 
     // 2. Dźwięki
@@ -3072,6 +3128,23 @@ document.addEventListener('click', (e) => {
     }
 });
 
+document.addEventListener('pointerdown', () => {
+    if (!userStoppedMusic) {
+        const gameLayout = document.getElementById('game-layout');
+        if (isElementVisible(gameLayout)) {
+            if (!isPlaying) playMusic();
+        } else {
+            const startScreen = document.getElementById('start-screen');
+            const authModal = document.getElementById('auth-modal');
+            const charSelection = document.getElementById('char-selection-modal');
+            
+            if (isElementVisible(startScreen) || isElementVisible(authModal) || isElementVisible(charSelection)) {
+                if (waitingAudio.paused) playWaitingMusic();
+            }
+        }
+    }
+});
+
 function updateDayNightCycle() {
     const overlay = document.getElementById('day-night-overlay');
     if (!overlay) return;
@@ -3525,7 +3598,7 @@ function updateCombatCamera() {
         return;
     }
 
-    container.style.transition = 'none';
+    container.style.transition = 'transform 0.4s ease-out';
     container.style.willChange = 'transform';
 
     const isPortrait = window.innerHeight > window.innerWidth;
@@ -3533,29 +3606,24 @@ function updateCombatCamera() {
     const viewH = arenaShell ? arenaShell.clientHeight : screen.clientHeight;
     const contW = container.offsetWidth || 1100;
     const contH = container.offsetHeight || 450;
-    const now = Date.now();
 
     const fitScale = Math.min(viewW / contW, viewH / contH) * 0.95;
-    let scale = fitScale;
-    if (!isPortrait) {
-        scale = Math.min(fitScale * 1.5, 1.25);
-    }
-    let moveX = (viewW - contW * scale) / 2;
-    let moveY = (viewH - contH * scale) / 2;
+    let scale = Math.min(fitScale * (isPortrait ? 2.6 : 1.8), isPortrait ? 1.6 : 1.3);
+    let moveX = 0;
+    let moveY = 0;
 
-    let hasTarget = false;
-    if (combatState && now > combatCameraOverviewUntil) {
-        // Track active turn target
-        scale = Math.min(fitScale * (isPortrait ? 2.6 : 1.8), isPortrait ? 1.6 : 1.3);
+    if (combatState) {
         const enemyEl = document.getElementById('combat-enemy');
         const playerEl = document.getElementById('combat-player');
-        const target = (combatState.turn === 'enemy' ? enemyEl : playerEl) || enemyEl || playerEl;
+        const target = (combatState.turn === 'enemy' ? enemyEl : playerEl) || playerEl || enemyEl;
         if (target) {
-            hasTarget = true;
-            const targetX = target.offsetLeft + target.offsetWidth / 2;
-            const targetY = target.offsetTop + target.offsetHeight / 2;
+            const targetX = (parseFloat(target.style.left) || target.offsetLeft || 0) + (target.offsetWidth || 64) / 2;
+            const targetY = (parseFloat(target.style.top) || target.offsetTop || 0) + (target.offsetHeight || 64) / 2;
             moveX = (viewW / 2) - (targetX * scale);
             moveY = (viewH / 2) - (targetY * scale);
+        } else {
+            moveX = (viewW - contW * scale) / 2;
+            moveY = (viewH - contH * scale) / 2;
         }
     }
 
@@ -3575,16 +3643,13 @@ function updateCombatCamera() {
     container.style.top = '0';
 
     if (!combatCameraState.initialized) {
+        container.style.transition = 'none';
         combatCameraState = { x: moveX, y: moveY, scale, initialized: true };
-    } else if (hasTarget) {
+        void container.offsetHeight;
+    } else {
         combatCameraState.x = moveX;
         combatCameraState.y = moveY;
         combatCameraState.scale = scale;
-    } else {
-        const smooth = isPortrait ? 0.18 : 0.12;
-        combatCameraState.x += (moveX - combatCameraState.x) * smooth;
-        combatCameraState.y += (moveY - combatCameraState.y) * smooth;
-        combatCameraState.scale += (scale - combatCameraState.scale) * smooth;
     }
 
     container.style.transform = `translate(${combatCameraState.x}px, ${combatCameraState.y}px) scale(${combatCameraState.scale})`;
@@ -3978,4 +4043,3 @@ switchTab = function(tabName) {
     }
     _originalSwitchTab(tabName);
 };
-

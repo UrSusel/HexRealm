@@ -57,14 +57,14 @@ try {
     function pickCenterSpawn($width, $height, $tiles) {
         $cx = (int)floor($width / 2);
         $cy = (int)floor($height / 2);
-        if ($tiles[$cy][$cx] !== 'water' && $tiles[$cy][$cx] !== 'mountain') {
+        if ($tiles[$cy][$cx] !== 'wwater' && $tiles[$cy][$cx] !== 'wmountain') {
             return [$cx, $cy];
         }
         for ($r = 1; $r < max($width, $height); $r++) {
             for ($y = max(0, $cy - $r); $y <= min($height - 1, $cy + $r); $y++) {
                 for ($x = max(0, $cx - $r); $x <= min($width - 1, $cx + $r); $x++) {
                     if (abs($x - $cx) !== $r && abs($y - $cy) !== $r) continue;
-                    if ($tiles[$y][$x] !== 'water' && $tiles[$y][$x] !== 'mountain') {
+                    if ($tiles[$y][$x] !== 'wwater' && $tiles[$y][$x] !== 'wmountain') {
                         return [$x, $y];
                     }
                 }
@@ -79,13 +79,13 @@ try {
                 $d = hexDistance($x, $y, $cx, $cy);
                 if ($d > $radius) continue;
                 $t = $tiles[$y][$x];
-                if (!in_array($t, ['grass', 'grass2', 'forest', 'hills', 'hills2'], true)) continue;
+                if (!in_array($t, ['wgrass', 'wgrass2', 'wforest', 'whills', 'whills2'], true)) continue;
                 $chance = 0;
                 if ($d <= 1) $chance = 90;
                 elseif ($d <= 2) $chance = 70;
                 else $chance = 45;
                 if (rand(1, 100) <= $chance) {
-                    $tiles[$y][$x] = 'farmlands';
+                    $tiles[$y][$x] = 'wfarmlands';
                 }
             }
         }
@@ -94,13 +94,13 @@ try {
     function applyHills(&$tiles, $width, $height) {
         for ($y = 0; $y < $height; $y++) {
             for ($x = 0; $x < $width; $x++) {
-                if ($tiles[$y][$x] !== 'mountain') continue;
+                if ($tiles[$y][$x] !== 'wmountain') continue;
                 foreach (getNeighbors($x, $y, $width, $height) as $n) {
                     $nx = $n[0]; $ny = $n[1];
                     $t = $tiles[$ny][$nx];
-                    if (in_array($t, ['grass', 'grass2', 'forest'], true)) {
+                    if (in_array($t, ['wgrass', 'wgrass2', 'wforest'], true)) {
                         if (rand(1, 100) <= 80) {
-                            $tiles[$ny][$nx] = (rand(0, 1) === 0) ? 'hills' : 'hills2';
+                            $tiles[$ny][$nx] = (rand(0, 1) === 0) ? 'whills' : 'whills2';
                         }
                     }
                 }
@@ -115,9 +115,9 @@ try {
                 foreach (getNeighbors($x, $y, $width, $height) as $n) {
                     $nx = $n[0]; $ny = $n[1];
                     $t = $tiles[$ny][$nx];
-                    if (in_array($t, ['grass', 'grass2', 'forest', 'hills', 'hills2'], true)) {
+                    if (in_array($t, ['wgrass', 'wgrass2', 'wforest', 'whills', 'whills2'], true)) {
                         if (rand(1, 100) <= 60) {
-                            $tiles[$ny][$nx] = 'farmlands';
+                            $tiles[$ny][$nx] = 'wfarmlands';
                         }
                     }
                 }
@@ -142,7 +142,7 @@ try {
     for ($y = 0; $y < $height; $y++) {
         $row = [];
         for ($x = 0; $x < $width; $x++) {
-            $row[] = 'grass';
+            $row[] = 'wgrass';
         }
         $tiles[] = $row;
     }
@@ -154,56 +154,56 @@ try {
             $topBand = ($y <= 2);
             $bottomBand = ($y >= $height - 3);
             if ($topBand || $bottomBand) {
-                $tiles[$y][$x] = 'water';
+                $tiles[$y][$x] = 'wwater';
                 continue;
             }
             if ($d === 0) {
-                $tiles[$y][$x] = 'water';
+                $tiles[$y][$x] = 'wwater';
             } elseif ($d === 1 && rand(1, 100) <= 65) {
-                $tiles[$y][$x] = 'water';
+                $tiles[$y][$x] = 'wwater';
             } elseif ($d === 2 && rand(1, 100) <= 35) {
-                $tiles[$y][$x] = 'water';
+                $tiles[$y][$x] = 'wwater';
             }
             if ($d === 3 && rand(1, 100) <= 25) {
-                $tiles[$y][$x] = 'water';
+                $tiles[$y][$x] = 'wwater';
             }
         }
     }
 
-    echo "Phase 1: Placing mountains...<br>";
+    echo "Phase 1: Placing icy mountain peaks...<br>";
 
-    // Mountain clusters
-    $mountainSeeds = max(4, (int)round(($width * $height) / 440));
+    // Mountain clusters (more frequent, larger for an ice planet)
+    $mountainSeeds = max(6, (int)round(($width * $height) / 300));
     for ($i = 0; $i < $mountainSeeds; $i++) {
         $mx = rand(6, max(6, $width - 7));
         $my = rand(6, max(6, $height - 7));
         if (distanceToEdge($mx, $my, $width, $height) < 6) continue;
-        if ($tiles[$my][$mx] === 'water') continue;
-        growCluster($tiles, $width, $height, $mx, $my, 'mountain', rand(10, 26), ['water']);
+        if ($tiles[$my][$mx] === 'wwater') continue;
+        growCluster($tiles, $width, $height, $mx, $my, 'wmountain', rand(15, 35), ['wwater']);
     }
 
-    echo "Phase 2: Placing lakes and rivers...<br>";
+    echo "Phase 2: Placing frozen lakes and ice rivers...<br>";
 
-    // Mini lakes
-    $lakeSeeds = max(3, (int)round(($width * $height) / 820));
+    // Mini lakes (frozen lakes, more frequent)
+    $lakeSeeds = max(5, (int)round(($width * $height) / 500));
     for ($i = 0; $i < $lakeSeeds; $i++) {
         $lx = rand(2, max(2, $width - 3));
         $ly = rand(2, max(2, $height - 3));
-        if ($tiles[$ly][$lx] === 'mountain') continue;
-        growCluster($tiles, $width, $height, $lx, $ly, 'water', rand(7, 18), ['mountain']);
+        if ($tiles[$ly][$lx] === 'wmountain') continue;
+        growCluster($tiles, $width, $height, $lx, $ly, 'wwater', rand(15, 35), ['wmountain']);
     }
 
     // Rivers
-    $riverSeeds = max(3, (int)round(($width * $height) / 900));
+    $riverSeeds = max(4, (int)round(($width * $height) / 700));
     for ($i = 0; $i < $riverSeeds; $i++) {
         $rx = rand(1, max(1, $width - 2));
         $ry = rand(1, max(1, $height - 2));
-        if ($tiles[$ry][$rx] === 'mountain') continue;
+        if ($tiles[$ry][$rx] === 'wmountain') continue;
         $len = rand(12, 28);
         $x = $rx; $y = $ry;
         for ($s = 0; $s < $len; $s++) {
-            if ($tiles[$y][$x] !== 'mountain') {
-                $tiles[$y][$x] = 'water';
+            if ($tiles[$y][$x] !== 'wmountain') {
+                $tiles[$y][$x] = 'wwater';
             }
             $neighbors = getNeighbors($x, $y, $width, $height);
             if (!$neighbors) break;
@@ -214,53 +214,53 @@ try {
         }
     }
 
-    echo "Phase 3: Placing forests...<br>";
+    echo "Phase 3: Placing sparse frozen forests and deep snow...<br>";
 
-    // Forest clusters
-    $forestSeeds = max(6, (int)round(($width * $height) / 260));
+    // Forest clusters (sparser, smaller)
+    $forestSeeds = max(4, (int)round(($width * $height) / 500));
     for ($i = 0; $i < $forestSeeds; $i++) {
         $fx = rand(1, max(1, $width - 2));
         $fy = rand(1, max(1, $height - 2));
-        if ($tiles[$fy][$fx] === 'water' || $tiles[$fy][$fx] === 'mountain') continue;
-        growCluster($tiles, $width, $height, $fx, $fy, 'forest', rand(16, 40), ['water', 'mountain']);
+        if ($tiles[$fy][$fx] === 'wwater' || $tiles[$fy][$fx] === 'wmountain') continue;
+        growCluster($tiles, $width, $height, $fx, $fy, 'wforest', rand(10, 25), ['wwater', 'wmountain']);
     }
 
     // Grass2 around forest
     for ($y = 0; $y < $height; $y++) {
         for ($x = 0; $x < $width; $x++) {
-            if ($tiles[$y][$x] !== 'forest') continue;
+            if ($tiles[$y][$x] !== 'wforest') continue;
             foreach (getNeighbors($x, $y, $width, $height) as $n) {
                 $nx = $n[0]; $ny = $n[1];
-                if ($tiles[$ny][$nx] === 'grass' && rand(1, 100) <= 55) {
-                    $tiles[$ny][$nx] = 'grass2';
+                if ($tiles[$ny][$nx] === 'wgrass' && rand(1, 100) <= 55) {
+                    $tiles[$ny][$nx] = 'wgrass2';
                 }
             }
         }
     }
 
-    // Grass2 clusters
-    $grass2Seeds = max(6, (int)round(($width * $height) / 240));
+    // Grass2 clusters (Huge deep snow plains)
+    $grass2Seeds = max(8, (int)round(($width * $height) / 180));
     for ($i = 0; $i < $grass2Seeds; $i++) {
         $gx = rand(1, max(1, $width - 2));
         $gy = rand(1, max(1, $height - 2));
-        if ($tiles[$gy][$gx] === 'water' || $tiles[$gy][$gx] === 'mountain') continue;
-        if ($tiles[$gy][$gx] === 'forest') continue;
-        growCluster($tiles, $width, $height, $gx, $gy, 'grass2', rand(12, 32), ['water', 'mountain', 'forest']);
+        if ($tiles[$gy][$gx] === 'wwater' || $tiles[$gy][$gx] === 'wmountain') continue;
+        if ($tiles[$gy][$gx] === 'wforest') continue;
+        growCluster($tiles, $width, $height, $gx, $gy, 'wgrass2', rand(20, 45), ['wwater', 'wmountain', 'wforest']);
     }
 
     // Mix grass/grass2
     for ($y = 0; $y < $height; $y++) {
         for ($x = 0; $x < $width; $x++) {
             $t = $tiles[$y][$x];
-            if ($t === 'grass' && rand(1, 100) <= 12) {
-                $tiles[$y][$x] = 'grass2';
-            } elseif ($t === 'grass2' && rand(1, 100) <= 4) {
-                $tiles[$y][$x] = 'grass';
+            if ($t === 'wgrass' && rand(1, 100) <= 25) {
+                $tiles[$y][$x] = 'wgrass2';
+            } elseif ($t === 'wgrass2' && rand(1, 100) <= 2) {
+                $tiles[$y][$x] = 'wgrass';
             }
         }
     }
 
-    echo "Phase 4: Placing cities and villages...<br>";
+    echo "Phase 4: Placing winter settlements...<br>";
 
     // Capital at center
     $centerSpawn = pickCenterSpawn($width, $height, $tiles);
@@ -276,7 +276,7 @@ try {
         $vy = rand(max(1, $centerSpawn[1] - 3), min($height - 2, $centerSpawn[1] + 3));
         $dist = hexDistance($vx, $vy, $centerSpawn[0], $centerSpawn[1]);
         if ($dist < 2 || $dist > 3) continue;
-        if (in_array($tiles[$vy][$vx], ['water', 'mountain', 'city_capital', 'city_village'], true)) continue;
+        if (in_array($tiles[$vy][$vx], ['wwater', 'wmountain', 'city_capital', 'city_village'], true)) continue;
         $tooClose = false;
         foreach ($nearCoords as $c) {
             if (hexDistance($vx, $vy, $c[0], $c[1]) < 2) { $tooClose = true; break; }
@@ -305,7 +305,7 @@ try {
         $vx = rand(1, max(1, $width - 2));
         $vy = rand(1, max(1, $height - 2));
         if ($tiles[$vy][$vx] === 'city_capital') continue;
-        if (in_array($tiles[$vy][$vx], ['water', 'mountain'], true)) continue;
+        if (in_array($tiles[$vy][$vx], ['wwater', 'wmountain'], true)) continue;
         if (abs($vx - $centerSpawn[0]) + abs($vy - $centerSpawn[1]) < 6) continue;
         $tiles[$vy][$vx] = 'city_village';
         $vCount++;

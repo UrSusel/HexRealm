@@ -129,6 +129,43 @@ header('Expires: 0');
             background-position: center top;
             pointer-events: none;
         }
+
+        /* --- KAFELKI ZIMOWE (Glaciem) --- */
+        .tile.wgrass { background-image: url('img/winter/wgrass.png'); }
+        .tile.wgrass2 { background-image: url('img/winter/wgrass2.png'); }
+        .tile.wforest { background-image: url('img/winter/forest.png'); }
+        .tile.wwater { background-image: url('img/winter/wwater.png'); }
+        .tile.whills { background-image: url('img/winter/hills.png'); background-size: 84% 84%; background-position: center calc(50% - 6px); }
+        .tile.wfarmlands { background-image: url('img/winter/wfarmlands.png'); background-size: 80% 80%; background-position: center; }
+        .tile.whills2 { background-image: none; overflow: visible; }
+        .tile.whills2::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: -45px;
+            width: 128px;
+            height: 160px;
+            background-image: url('img/winter/hills2.png');
+            background-repeat: no-repeat;
+            background-size: 84% 100%;
+            background-position: center top;
+            pointer-events: none;
+        }
+        .tile.wmountain { background-image: none; overflow: visible; }
+        .tile.wmountain::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: -8px;
+            width: 128px;
+            height: 140px;
+            background-image: url('img/winter/wmountain.png');
+            background-repeat: no-repeat;
+            background-size: 100% 100%;
+            background-position: center top;
+            pointer-events: none;
+        }
+
         .tile.city_capital { background-image: url('img/castle.png'); }
         .tile.city_village { background-image: url('img/vilage.png'); }
         .tile:hover { filter: brightness(1.3) drop-shadow(0 0 10px white); z-index: 1200 !important; }

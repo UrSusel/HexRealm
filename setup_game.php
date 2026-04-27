@@ -248,7 +248,7 @@ try {
     // Insert (or recreate) tutorial world with id = 1
     $pdo->prepare("INSERT INTO worlds (id, name, width, height, is_tutorial) VALUES (1, ?, ?, ?, 1)
         ON DUPLICATE KEY UPDATE name = VALUES(name), width = VALUES(width), height = VALUES(height), is_tutorial = VALUES(is_tutorial)")
-        ->execute(['Tutorial Island', 15, 15]);
+        ->execute(['Tutorial Island', 30, 50]);
 
     // Ensure a default user and character exist (idempotent)
     $pdo->prepare("INSERT INTO users (id, username, password) VALUES (1, 'Tester', 'admin')
@@ -368,31 +368,29 @@ try {
 
     // GENERATE MAP FOR TUTORIAL (world_id = 1)
     $tiles = [];
-    for ($y = 0; $y < 15; $y++) {
+    for ($y = 0; $y < 50; $y++) {
         $row = [];
-        for ($x = 0; $x < 15; $x++) {
+        for ($x = 0; $x < 30; $x++) {
             $type = 'grass';
             $r = rand(1, 100);
-            if ($r > 45) $type = 'grass2';
-            if ($r > 72) $type = 'forest';
-            if ($r > 90) $type = 'mountain';
-            if ($r > 97) $type = 'water';
-
-            // Safe starting zone
-            if ($x < 3 && $y < 3) $type = 'grass';
-            if ($x == 0 && $y == 0) $type = 'city_village';
+            if ($r > 40) $type = 'grass2';
+            if ($r > 65) $type = 'forest';
+            if ($r > 85) $type = 'mountain';
+            if ($r > 95) $type = 'water';
 
             $row[] = $type;
         }
         $tiles[] = $row;
     }
 
-    applyHills($tiles, 15, 15);
-    applyFarmlands($tiles, 15, 15);
+    $tiles[25][15] = 'city_capital';
+
+    applyHills($tiles, 30, 50);
+    applyFarmlands($tiles, 30, 50);
 
     $stmt = $pdo->prepare("INSERT INTO map_tiles (world_id, x, y, type) VALUES (1, ?, ?, ?)");
-    for ($y = 0; $y < 15; $y++) {
-        for ($x = 0; $x < 15; $x++) {
+    for ($y = 0; $y < 50; $y++) {
+        for ($x = 0; $x < 30; $x++) {
             $stmt->execute([$x, $y, $tiles[$y][$x]]);
         }
     }

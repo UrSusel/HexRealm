@@ -60,15 +60,39 @@ header('Expires: 0');
             position: absolute;
             background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.55), rgba(255,255,255,0));
             opacity: 0.35;
-            filter: blur(0.3px);
             animation: windMove var(--dur, 2.6s) linear forwards;
             transform: translate(0, 0) rotate(var(--rot, 0deg));
+        will-change: transform, opacity;
         }
         @keyframes windMove {
             from { transform: translate(0, 0) rotate(var(--rot, 0deg)); opacity: 0.0; }
             10% { opacity: 0.35; }
             90% { opacity: 0.25; }
             to { transform: translate(var(--dx, 200px), var(--dy, 0px)) rotate(var(--rot, 0deg)); opacity: 0.0; }
+        }
+        .snowflake {
+            position: absolute;
+            background: #fff;
+            border-radius: 50%;
+            pointer-events: none;
+            animation: snowFall var(--dur, 3s) linear forwards;
+        will-change: transform, opacity;
+        }
+        @keyframes snowFall {
+            0% { transform: translate(0, 0); opacity: 0; }
+            10% { opacity: var(--max-op, 0.8); }
+            90% { opacity: var(--max-op, 0.8); }
+            100% { transform: translate(var(--dx, 20px), var(--dy, 500px)); opacity: 0; }
+        }
+
+        /* --- FROST VIGNETTE --- */
+        #frost-vignette {
+            position: absolute; inset: 0; pointer-events: none; z-index: 1400;
+            box-shadow: inset 0 0 150px rgba(180, 220, 255, 0.25), inset 0 0 40px rgba(255, 255, 255, 0.4);
+            opacity: 0; transition: opacity 2s ease-in-out;
+        }
+        #frost-vignette.active {
+            opacity: 1;
         }
 
         /* --- KAFELKI --- */
@@ -239,6 +263,12 @@ header('Expires: 0');
         .panel-collapsed #expand-panel-btn {
             display: block;
         }
+            #mobile-expand-icon { display: none; }
+            .desktop-close-btn { display: inline-flex; }
+            @media (max-width: 1366px) {
+                .hide-on-mobile { display: none; }
+                .desktop-close-btn { display: none !important; }
+            }
         .tabs { 
             display: flex; 
             background: linear-gradient(180deg, #3d2f1f 0%, #2a1e14 100%);
@@ -1136,6 +1166,16 @@ header('Expires: 0');
                 font-size: 10px;
             }
 
+            #minimap-btn {
+                top: 10px !important;
+                bottom: auto !important;
+                left: auto !important;
+                right: 10px !important;
+                padding: 6px 12px !important;
+                font-size: 11px !important;
+                z-index: 3100 !important;
+            }
+
             #shop-btn {
                 bottom: 100px; /* Move up to not be covered by mobile panel toggle */
                 padding: 6px 12px;
@@ -1204,20 +1244,34 @@ header('Expires: 0');
                 font-size: 18px;
             }
             
+            #mobile-panel-toggle { display: none !important; }
+            #mobile-expand-icon { display: block; }
+            #game-layout:not(.panel-collapsed) #mobile-expand-icon {
+                transform: rotate(180deg);
+            }
+
             /* Move buttons with panel in portrait mode */
-            #world-btn, #shop-btn {
+            #world-btn, #shop-btn, #planet-change-btn {
                 position: fixed !important;
                 z-index: 10001 !important;
                 transition: bottom 0.3s ease-in-out;
-                bottom: calc(360px + env(safe-area-inset-bottom)) !important;
+            }
+            #world-btn, #shop-btn {
+                bottom: calc(35vh + 10px + env(safe-area-inset-bottom)) !important;
+            }
+            #planet-change-btn {
+                bottom: calc(35vh + 45px + env(safe-area-inset-bottom)) !important;
             }
             #game-layout.panel-collapsed #left-panel #world-btn,
             #game-layout.panel-collapsed #left-panel #shop-btn {
-                bottom: calc(20px + env(safe-area-inset-bottom)) !important;
+                bottom: calc(60px + 10px + env(safe-area-inset-bottom)) !important;
+            }
+            #game-layout.panel-collapsed #left-panel #planet-change-btn {
+                bottom: calc(60px + 45px + env(safe-area-inset-bottom)) !important;
             }
 
             #game-layout.panel-collapsed #right-panel {
-                transform: translateY(100%);
+                transform: translateY(calc(100% - 60px));
             }
             .big-bar-widget { height: 32px; }
 
@@ -1226,7 +1280,7 @@ header('Expires: 0');
                 left: 50% !important;
                 right: auto !important;
                 transform: translateX(-50%) !important;
-                bottom: calc(360px + env(safe-area-inset-bottom)) !important;
+                bottom: calc(35vh + 10px + env(safe-area-inset-bottom)) !important;
                 padding: 8px 15px;
                 font-size: 12px;
                 z-index: 10001 !important;
@@ -1269,6 +1323,8 @@ header('Expires: 0');
                 transform: translateX(0); z-index: 3000;
                 transition: transform 0.3s ease-in-out;
             }
+            #mobile-expand-icon { display: none !important; }
+            #right-panel-header { cursor: default !important; }
             #game-layout.panel-collapsed #right-panel {
                 transform: translateX(100%);
             }
@@ -1446,18 +1502,6 @@ header('Expires: 0');
 
             .combat-title {
                 display: none !important;
-            }
-
-            #world-btn {
-                top: 10px !important;
-                right: 320px !important;
-                left: auto !important;
-                bottom: auto !important;
-                position: fixed;
-                z-index: 10001;
-            }
-            #game-layout.panel-collapsed #world-btn {
-                right: 10px !important;
             }
 
             #shop-btn {
@@ -1783,6 +1827,8 @@ header('Expires: 0');
     <div id="left-panel">
         <div id="day-night-overlay" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:1500; transition: background-color 5s;"></div>
         <div id="wind-layer"></div>
+        <div id="snow-layer" style="position:absolute; inset:0; pointer-events:none; overflow:hidden; z-index:1100;"></div>
+        <div id="frost-vignette"></div>
         
         <div class="top-left-ui">
             <div class="world-text">
@@ -1809,12 +1855,33 @@ header('Expires: 0');
     </div>
 
     <div id="right-panel">
-        <div style="padding:15px; border-bottom:2px solid #61491f; background:linear-gradient(180deg, #3d2f1f 0%, #2a1e14 100%); display:flex; justify-content:space-between; align-items:center;">
-            <button class="icon-btn" onclick="toggleRightPanel()" title="Hide Panel (Tab)" style="font-weight:bold; color:#c9a875; font-size:18px;">»</button>
-            <div style="display:flex; gap:10px;">
-                <button class="icon-btn" onclick="toggleSettings()">
-                    <img src="assets/ui/cogwheel.png" alt="Settings">
+        <div id="right-panel-header" onclick="if(window.innerWidth <= 1366 && window.innerHeight > window.innerWidth) toggleRightPanel()" style="padding:6px 10px; border-bottom:2px solid #61491f; background:linear-gradient(180deg, #3d2f1f 0%, #2a1e14 100%); display:flex; justify-content:space-between; align-items:center; height:60px; box-sizing:border-box; cursor:pointer;">
+            
+            <!-- Lewa strona: Paski i Info Gracza połączone razem -->
+            <div style="display:flex; align-items:center; gap:12px; flex-grow:1; overflow:hidden;">
+                <div style="display:flex; flex-direction:column; justify-content:center; gap:3px; width:85px; flex-shrink:0;">
+                    <div style="font-size:12px; font-weight:bold; color:#f4d58d; text-align:left; line-height:1; display:flex; justify-content:space-between;"><span>HP</span><span id="mini-hp-val">100</span></div>
+                    <div style="width:100%; height:5px; background:#222; border-radius:3px; border:1px solid #444; overflow:hidden;">
+                        <div id="mini-hp-fill" style="width:100%; height:100%; background:#d32f2f; transition:width 0.2s;"></div>
+                    </div>
+                    <div style="font-size:12px; font-weight:bold; color:#f4d58d; text-align:left; line-height:1; margin-top:2px; display:flex; justify-content:space-between;"><span>XP</span><span id="mini-xp-val">0</span></div>
+                    <div style="width:100%; height:5px; background:#222; border-radius:3px; border:1px solid #444; overflow:hidden;">
+                        <div id="mini-xp-fill" style="width:0%; height:100%; background:#00e676; transition:width 0.2s;"></div>
+                    </div>
+                </div>
+                
+                <div style="display:flex; flex-direction:column; justify-content:center; overflow:hidden;">
+                    <div id="class-name" style="color:#ffeaa7; font-size:16px; font-weight:bold; text-shadow:1px 1px 2px rgba(0,0,0,0.8); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:140px; text-align:left;">Character</div>
+                    <div style="font-size:14px; color:#8b7355; margin-top:2px; text-align:left;">Lvl <span id="lvl" style="font-size:20px; color:#fff; font-weight:bold;">1</span> <span class="hide-on-mobile">- <span id="char-class" style="color:#c9a875; font-size:12px;">Unknown</span></span></div>
+                </div>
+            </div>
+            
+            <div style="display:flex; gap:2px; align-items:center; flex-shrink:0;">
+                <button class="icon-btn" style="padding:0 5px;" onclick="event.stopPropagation(); toggleSettings()">
+                    <img src="assets/ui/cogwheel.png" alt="Settings" style="width:24px; height:24px;">
                 </button>
+                <div id="mobile-expand-icon" style="color:#c9a875; font-size:16px; padding:0 2px; transition:transform 0.3s;">▲</div>
+                <button class="icon-btn desktop-close-btn" onclick="event.stopPropagation(); toggleRightPanel()" title="Hide Panel (Tab)" style="font-weight:bold; color:#c9a875; font-size:22px; padding:0 5px;">»</button>
             </div>
         </div>
 
@@ -1826,8 +1893,6 @@ header('Expires: 0');
         </div>
 
         <div id="tab-stats" class="tab-content active">
-            <h2 id="class-name" style="margin:0; color:#ffeaa7;">Character</h2>
-            <div style="font-size:12px; color:#8b7355; margin-bottom:20px;">Level <span id="lvl">1</span> - <span id="char-class" style="color:#c9a875;">Unknown</span></div>
             <div style="color:#f4d58d;">Health: <span id="hp">100 / 100</span></div>
             <div class="big-bar-widget">
                 <div class="hb-fill-wrapper"><div class="hb-fill" id="hp-fill" style="width:100%"></div></div>

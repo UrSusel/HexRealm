@@ -639,12 +639,57 @@ function worldHasTiles($pdo, $worldId) {
     return ((int)$stmt->fetchColumn()) > 0;
 }
 
+function apiGetNeighbors($x, $y, $width, $height) {
+    $offsets = ($y % 2 != 0)
+        ? [[1,0],[1,-1],[0,-1],[-1,0],[0,1],[1,1]]
+        : [[1,0],[0,-1],[-1,-1],[-1,0],[-1,1],[0,1]];
+    $neighbors = [];
+    foreach ($offsets as $o) {
+        $nx = $x + $o[0];
+        $ny = $y + $o[1];
+        if ($nx >= 0 && $ny >= 0 && $nx < $width && $ny < $height) {
+            $neighbors[] = [$nx, $ny];
+        }
+    }
+    return $neighbors;
+}
+
+function apiApplyHills(&$tiles, $width, $height) {
+    for ($y = 0; $y < $height; $y++) {
+        for ($x = 0; $x < $width; $x++) {
+            if ($tiles[$y][$x] !== 'mountain') continue;
+            foreach (apiGetNeighbors($x, $y, $width, $height) as $n) {
+                $nx = $n[0]; $ny = $n[1];
+                $t = $tiles[$ny][$nx];
+                if (in_array($t, ['grass', 'grass2', 'forest'], true)) {
+                    $tiles[$ny][$nx] = (rand(0, 1) === 0) ? 'hills' : 'hills2';
+                }
+            }
+        }
+    }
+}
+
+function apiApplyFarmlands(&$tiles, $width, $height) {
+    for ($y = 0; $y < $height; $y++) {
+        for ($x = 0; $x < $width; $x++) {
+            if ($tiles[$y][$x] !== 'city_village') continue;
+            foreach (apiGetNeighbors($x, $y, $width, $height) as $n) {
+                $nx = $n[0]; $ny = $n[1];
+                $t = $tiles[$ny][$nx];
+                if (in_array($t, ['grass', 'grass2', 'forest', 'hills', 'hills2'], true)) {
+                    $tiles[$ny][$nx] = 'farmlands';
+                }
+            }
+        }
+    }
+}
+
 function ensureTutorialWorld($pdo) {
     $tutorialId = 1;
 
     $worldExists = worldExists($pdo, $tutorialId);
     if (!$worldExists) {
-        $stmt = $pdo->prepare("INSERT INTO worlds (id, name, width, height, is_tutorial) VALUES (1, ?, 15, 15, 1)");
+        $stmt = $pdo->prepare("INSERT INTO worlds (id, name, width, height, is_tutorial) VALUES (1, ?, 30, 50, 1)");
         $stmt->execute(['Tutorial World']);
     }
 
@@ -653,29 +698,29 @@ function ensureTutorialWorld($pdo) {
     }
 
     $tiles = [];
-    for ($y = 0; $y < 15; $y++) {
+    for ($y = 0; $y < 50; $y++) {
         $row = [];
-        for ($x = 0; $x < 15; $x++) {
+        for ($x = 0; $x < 30; $x++) {
             $type = 'grass';
             $r = rand(1, 100);
-            if ($r > 45) $type = 'grass2';
-            if ($r > 72) $type = 'forest';
-            if ($r > 90) $type = 'mountain';
-            if ($r > 97) $type = 'water';
-
-            if ($x < 3 && $y < 3) $type = 'grass';
-            if ($x == 0 && $y == 0) $type = 'city_village';
+            if ($r > 40) $type = 'grass2';
+            if ($r > 65) $type = 'forest';
+            if ($r > 85) $type = 'mountain';
+            if ($r > 95) $type = 'water';
 
             $row[] = $type;
         }
         $tiles[] = $row;
     }
 
-    $tiles[7][7] = 'city_capital';
+    $tiles[25][15] = 'city_capital';
+
+    apiApplyHills($tiles, 30, 50);
+    apiApplyFarmlands($tiles, 30, 50);
 
     $stmt = $pdo->prepare("INSERT INTO map_tiles (world_id, x, y, type) VALUES (1, ?, ?, ?)");
-    for ($y = 0; $y < 15; $y++) {
-        for ($x = 0; $x < 15; $x++) {
+    for ($y = 0; $y < 50; $y++) {
+        for ($x = 0; $x < 30; $x++) {
             $stmt->execute([$x, $y, $tiles[$y][$x]]);
         }
     }

@@ -102,6 +102,41 @@ let skillUnlockMenuOpen = false;
 let unlockableSkillIds = [];
 let skillResetCostCopper = 0;
 
+let discoveredTiles = {}; // { world_id: { "x_y": "type" } }
+
+function loadDiscoveredTiles() {
+    if (!gameState || !gameState.id) return;
+    try {
+        const saved = localStorage.getItem('rpg_map_' + gameState.id);
+        if (saved) discoveredTiles = JSON.parse(saved);
+        else discoveredTiles = {};
+    } catch (e) {
+        discoveredTiles = {};
+    }
+}
+
+function saveDiscoveredTiles() {
+    if (!gameState || !gameState.id) return;
+    try {
+        localStorage.setItem('rpg_map_' + gameState.id, JSON.stringify(discoveredTiles));
+    } catch (e) {}
+}
+
+function updateDiscoveredTiles(tiles) {
+    if (!gameState || !gameState.world_id) return;
+    const wid = gameState.world_id;
+    if (!discoveredTiles[wid]) discoveredTiles[wid] = {};
+    let changed = false;
+    tiles.forEach(t => {
+        const key = `${t.x}_${t.y}`;
+        if (discoveredTiles[wid][key] !== t.type) {
+            discoveredTiles[wid][key] = t.type;
+            changed = true;
+        }
+    });
+    if (changed) saveDiscoveredTiles();
+}
+
 const GRAPHICS_PRESET_KEY = 'rpg_graphics_preset';
 const GRAPHICS_SHADOW_STRENGTH_KEY = 'rpg_graphics_shadow_strength';
 let shadowStrength = 0.6;
@@ -325,8 +360,18 @@ function applyGraphicsPreset(preset, save = true) {
     }
 
     const cfg = getGraphicsConfig();
-    if (cfg.windEnabled) startWindEffect();
-    else stopWindEffect();
+    if (cfg.windEnabled) {
+        if (gameState.world_id === 5) {
+            stopWindEffect();
+            startSnowEffect();
+        } else {
+            stopSnowEffect();
+            startWindEffect();
+        }
+    } else {
+        stopWindEffect();
+        stopSnowEffect();
+    }
 
     if ((cfg.smokeParticlesPerCity || 0) <= 0) {
         document.querySelectorAll('.smoke-particle').forEach(el => el.remove());
@@ -369,12 +414,63 @@ function playSoundEffect(category, damageValue = 0) {
 function startWalkingSound() { if (stepInterval) return; playSoundEffect('walk'); stepInterval = setInterval(() => { playSoundEffect('walk'); }, 400); }
 function stopWalkingSound() { if (stepInterval) { clearInterval(stepInterval); stepInterval = null; } }
 
+let tutorialCloudHidden = false;
+
+window.hideTutorialCloud = function() {
+    tutorialCloudHidden = true;
+    const cloud = document.getElementById('tutorial-cloud');
+    if (cloud) cloud.style.display = 'none';
+};
+
+function initTutorialCloud() {
+    let cloud = document.getElementById('tutorial-cloud');
+    if (!cloud) {
+        cloud = document.createElement('div');
+        cloud.id = 'tutorial-cloud';
+        cloud.style.cssText = 'position:fixed; top:120px; left:50%; transform:translateX(-50%); background:rgba(20,20,20,0.95); border:2px solid #ffd700; padding:15px; border-radius:8px; color:white; z-index:999999; text-align:center; max-width:400px; display:none; pointer-events:none; box-shadow:0 4px 15px rgba(0,0,0,0.8), 0 0 10px rgba(255,215,0,0.3); font-size:14px; line-height:1.4; transition: opacity 0.3s;';
+        document.body.appendChild(cloud);
+    }
+}
+
+function updateTutorialCloud() {
+    const cloud = document.getElementById('tutorial-cloud');
+    if (!cloud) return;
+
+    const startScreen = document.getElementById('start-screen');
+    if (!startScreen || startScreen.style.display !== 'none') {
+        cloud.style.display = 'none';
+        return;
+    }
+
+    if (tutorialCloudHidden || gameState.tutorial_completed || gameState.world_id !== 1) {
+        cloud.style.display = 'none';
+        return;
+    }
+
+    cloud.style.display = 'block';
+
+    const closeBtn = '<img src="assets/ui/ex.png" onclick="hideTutorialCloud()" style="pointer-events:auto; position:absolute; top:8px; right:8px; width:20px; height:20px; cursor:pointer; transition: transform 0.1s; filter:drop-shadow(0 0 2px #000);" onmouseover="this.style.transform=\'scale(1.2)\'" onmouseout="this.style.transform=\'scale(1)\'">';
+
+    if (gameState.in_combat) {
+        cloud.innerHTML = closeBtn + '<strong style="color:#ffd700; font-size:16px;">⚔️ Combat Tutorial</strong><br><br><span style="color:#aaffaa;"><b>Move:</b></span> Click a nearby tile (costs AP)<br><span style="color:#ffaaaa;"><b>Attack:</b></span> Click the Enemy (costs 2 AP)<br><span style="color:#aaaaff;"><b>Skills:</b></span> Use buttons below (costs 1 AP)<br><br>Defeat the monster to complete the tutorial!';
+    } else {
+        const isSafeZone = isPlayerInSettlement();
+        if (isSafeZone) {
+            cloud.innerHTML = closeBtn + '<strong style="color:#ffd700; font-size:16px;">🗺️ Exploration Tutorial</strong><br><br>Welcome to HexRealm!<br>You are currently in a <span style="color:#aaffaa;">Safe Zone (City)</span>.<br><br>Click adjacent tiles to move.<br>Moving in the wild costs <span style="color:#ffffaa;">Energy</span> and can trigger <b>Monster Ambushes</b>.<br><br>Find and defeat a monster to proceed!';
+        } else {
+            cloud.innerHTML = closeBtn + '<strong style="color:#ffd700; font-size:16px;">🌲 Wilderness</strong><br><br>You are in the wild!<br>Keep moving to explore. Every step costs Energy.<br>Watch out for <b>Monster Ambushes</b>!<br><br>Defeat a monster to complete the tutorial.';
+        }
+    }
+}
+
 // --- START ---
 
-function startGame() {
+async function startGame() {
     document.getElementById('start-screen').style.display = 'none';
     document.getElementById('game-layout').style.display = 'flex';
+    initTutorialCloud();
     applyResponsiveStyles();
+    injectButtonSizeStyles();
     stopWaitingMusic();
     
     if (!userStoppedMusic) {
@@ -405,6 +501,22 @@ function startGame() {
         shopBtn.onclick = () => openCityMenu();
         document.body.appendChild(shopBtn);
     }
+    
+    if (!document.getElementById('minimap-btn')) {
+        const minimapBtn = document.createElement('button');
+        minimapBtn.id = 'minimap-btn';
+        minimapBtn.innerText = "🗺️ Map";
+        minimapBtn.style.cssText = "position:fixed; bottom:20px; left:20px; padding:12px 20px; background:linear-gradient(180deg, #2c3e50, #1a252f); color:#ecf0f1; border:2px solid #34495e; font-weight:bold; cursor:pointer; border-radius:5px; z-index:1000; box-shadow:0 4px 10px rgba(0,0,0,0.8); transition: transform 0.1s;";
+        minimapBtn.onmouseover = () => minimapBtn.style.transform = 'scale(1.05)';
+        minimapBtn.onmouseout = () => minimapBtn.style.transform = 'scale(1)';
+        minimapBtn.onclick = () => toggleMinimap();
+        const leftPanel = document.getElementById('left-panel');
+        if (leftPanel) {
+            leftPanel.appendChild(minimapBtn);
+        } else {
+            document.body.appendChild(minimapBtn);
+        }
+    }
 
     const btn = document.getElementById('music-btn');
     if(btn) { btn.innerText = '🔊'; btn.classList.add('playing'); }
@@ -420,14 +532,14 @@ function startGame() {
     loadGraphicsLightingSettings();
     applyGraphicsPreset(graphicsPreset, false);
     syncLightingSettingsUI();
-    initGame();
+    await initGame();
     updateDayNightCycle();
     setInterval(updateDayNightCycle, 60000);
 }
 
 function startWindEffect() {
     const cfg = getGraphicsConfig();
-    if (!cfg.windEnabled) {
+    if (!cfg.windEnabled || gameState.world_id === 5) {
         stopWindEffect();
         return;
     }
@@ -444,10 +556,12 @@ function scheduleWind() {
     const delayRange = Math.max(0, cfg.windDelayMax - cfg.windDelayMin);
     const delay = cfg.windDelayMin + Math.random() * delayRange;
     windTimer = setTimeout(() => {
-        const burstMax = Math.max(cfg.windBurstMin, cfg.windBurstMax);
-        const burstCount = cfg.windBurstMin + Math.floor(Math.random() * (burstMax - cfg.windBurstMin + 1));
-        for (let i = 0; i < burstCount; i++) {
-            setTimeout(() => createWindStreak(), i * 30);
+        if (!document.hidden) {
+            const burstMax = Math.max(cfg.windBurstMin, cfg.windBurstMax);
+            const burstCount = cfg.windBurstMin + Math.floor(Math.random() * (burstMax - cfg.windBurstMin + 1));
+            for (let i = 0; i < burstCount; i++) {
+                setTimeout(() => createWindStreak(), i * 30);
+            }
         }
         scheduleWind();
     }, delay);
@@ -457,6 +571,7 @@ function createWindStreak() {
     if (!getGraphicsConfig().windEnabled) return;
     const layer = document.getElementById('wind-layer');
     if (!layer || document.body.classList.contains('combat-active')) return;
+    if (layer.childElementCount > 40) return; // Prevent lag from too many particles
     const rect = layer.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
 
@@ -494,6 +609,88 @@ function createWindStreak() {
     streak.addEventListener('animationend', () => streak.remove(), { once: true });
 }
 
+let snowActive = false;
+let snowTimer = null;
+
+function startSnowEffect() {
+    const cfg = getGraphicsConfig();
+    if (!cfg.windEnabled || gameState.world_id !== 5) {
+        stopSnowEffect();
+        return;
+    }
+    if (snowActive) return;
+    const layer = document.getElementById('snow-layer');
+    if (!layer) return;
+    snowActive = true;
+    scheduleSnow();
+
+    const vignette = document.getElementById('frost-vignette');
+    if (vignette) vignette.classList.add('active');
+}
+
+function scheduleSnow() {
+    const cfg = getGraphicsConfig();
+    if (!snowActive || !cfg.windEnabled || gameState.world_id !== 5) return;
+    
+    if (!document.hidden) {
+        const count = cfg.windBurstMax * 2; 
+        for (let i = 0; i < count; i++) {
+            setTimeout(createSnowflake, Math.random() * 500);
+        }
+    }
+    
+    snowTimer = setTimeout(scheduleSnow, 500);
+}
+
+function createSnowflake() {
+    if (!getGraphicsConfig().windEnabled || gameState.world_id !== 5) return;
+    const layer = document.getElementById('snow-layer');
+    if (!layer || document.body.classList.contains('combat-active')) return;
+    if (layer.childElementCount > 100) return; // Prevent lag from too many particles
+    const rect = layer.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+
+    const startX = -150 + Math.random() * (rect.width + 150);
+    const startY = -20;
+    
+    const size = 3 + Math.random() * 4;
+    const duration = 2.5 + Math.random() * 3.5;
+    
+    // Dynamic wind that sways direction slowly over time
+    const timeFactor = Date.now() / 4000;
+    const dx = (Math.sin(timeFactor) * 120) + (Math.random() * 50 - 25); 
+    const dy = rect.height + 50;
+
+    const flake = document.createElement('div');
+    flake.className = 'snowflake';
+    flake.style.left = `${startX}px`;
+    flake.style.top = `${startY}px`;
+    flake.style.width = `${size}px`;
+    flake.style.height = `${size}px`;
+    flake.style.setProperty('--dx', `${dx}px`);
+    flake.style.setProperty('--dy', `${dy}px`);
+    flake.style.setProperty('--dur', `${duration}s`);
+    flake.style.setProperty('--max-op', `${0.3 + Math.random() * 0.6}`);
+
+    layer.appendChild(flake);
+    flake.addEventListener('animationend', () => flake.remove(), { once: true });
+}
+
+function stopSnowEffect() {
+    snowActive = false;
+    if (snowTimer) {
+        clearTimeout(snowTimer);
+        snowTimer = null;
+    }
+    const layer = document.getElementById('snow-layer');
+    if (layer) {
+        layer.querySelectorAll('.snowflake').forEach(el => el.remove());
+    }
+
+    const vignette = document.getElementById('frost-vignette');
+    if (vignette) vignette.classList.remove('active');
+}
+
 async function initGame() {
     try {
         const res = await fetch('api.php', { 
@@ -512,6 +709,22 @@ async function initGame() {
 
             updateLocalState(json.data);
             selectedSkillIds = loadSelectedSkillsFromStorage();
+            
+            loadDiscoveredTiles();
+            
+            const cfg = getGraphicsConfig();
+            if (cfg.windEnabled) {
+                if (gameState.world_id === 5) {
+                    stopWindEffect();
+                    startSnowEffect();
+                } else {
+                    stopSnowEffect();
+                    startWindEffect();
+                }
+            } else {
+                stopWindEffect();
+                stopSnowEffect();
+            }
             
             // Ensure player has all skills they should have based on level
             const ensureSkillsRes = await apiPost('ensure_skills_unlocked');
@@ -553,6 +766,7 @@ async function initGame() {
                 startPlayerAnimation();
                 setTimeout(() => { updatePlayerVisuals(gameState.x, gameState.y, true); }, 50);
                 startMultiplayerPolling(); // Start polling for other players
+                updateShopButtonVisibility();
             }
             renderInventory(json.data.inventory);
             checkLifeStatus();
@@ -590,19 +804,25 @@ async function checkTutorialStatus() {
 async function showWorldSelection(forceBypass = false) {
     try {
         allowWorldBypass = Boolean(forceBypass) || allowWorldBypass;
+        const startTime = performance.now();
         const data = await apiPost('get_worlds_list');
+        const pingMs = Math.round(performance.now() - startTime);
         const modal = document.getElementById('world-selection');
         const list = document.getElementById('world-list');
         if (!modal || !list) return;
         list.innerHTML = '';
 
         if (data.status === 'success' && Array.isArray(data.worlds) && data.worlds.length) {
+            let pingColor = '#4caf50'; // Zielony
+            if (pingMs > 100) pingColor = '#ff9800'; // Pomarańczowy
+            if (pingMs > 250) pingColor = '#f44336'; // Czerwony
+            
             data.worlds.forEach(w => {
                 const el = document.createElement('div');
                 el.className = 'world-item';
                 el.style.cursor = 'pointer';
                 el.innerHTML = `<strong>${escapeHtml(w.name)}</strong>
-                                <div style="font-size:12px;color:#ccc">${w.width}x${w.height} • ${w.player_count} players</div>`;
+                                <div style="font-size:12px;color:#ccc">${w.width}x${w.height} • ${w.player_count} players • <span style="color:${pingColor}">${pingMs}ms</span></div>`;
                 el.addEventListener('click', () => joinWorld(parseInt(w.id)));
                 list.appendChild(el);
             });
@@ -625,13 +845,23 @@ async function joinWorldDebug() {
 
 async function joinWorld(worldId) {
     try {
+        const isLeavingTutorial = (gameState.world_id === 1);
         const data = await apiPost('join_world', { world_id: worldId, bypass_city: allowWorldBypass });
         if (data.status === 'success') {
             const modal = document.getElementById('world-selection');
             if (modal) modal.style.display = 'none';
             allowWorldBypass = false;
-            if (typeof initGame === 'function') await initGame();
-            else location.reload();
+            
+            playTransitionOverlay(async () => {
+                if (isLeavingTutorial) {
+                    window.location.reload();
+                } else {
+                    if (typeof initGame === 'function') {
+                        await initGame();
+                        showRespawnEffect();
+                    } else window.location.reload();
+                }
+            });
         } else {
             showToast(data.message || 'Failed to join world', 'error');
         }
@@ -809,6 +1039,7 @@ function renderMapTiles(tiles) {
     const resolvedPreset = resolveGraphicsPresetName();
 
     const sourceTiles = Array.isArray(tiles) ? tiles : [];
+    updateDiscoveredTiles(sourceTiles);
     latestTileCache = sourceTiles;
     const tilesToRender = (resolvedPreset === 'very_low')
         ? sourceTiles.filter(t => {
@@ -827,6 +1058,29 @@ function renderMapTiles(tiles) {
 
     const newKeys = new Set();
     const moveDuration = window.currentMoveDuration || 0;
+
+    const lightSources = [];
+    const playerX = parseInt(gameState.x || 0, 10);
+    const playerY = parseInt(gameState.y || 0, 10);
+    const pOffsetX = (playerY % 2 !== 0) ? (HEX_WIDTH / 2) : 0;
+    const pPosX = (playerX * HEX_WIDTH) + pOffsetX;
+    const pPosY = (playerY * HEX_HEIGHT);
+    lightSources.push({ x: pPosX, y: pPosY, radius: 750 });
+
+    if (cfg.dynamicLightingEnabled) {
+        sourceTiles.forEach(st => {
+            if (st.type === 'city_capital' || st.type === 'city_village') {
+                const tx = parseInt(st.x, 10);
+                const ty = parseInt(st.y, 10);
+                const tOffX = (ty % 2 !== 0) ? (HEX_WIDTH / 2) : 0;
+                lightSources.push({
+                    x: (tx * HEX_WIDTH) + tOffX,
+                    y: (ty * HEX_HEIGHT),
+                    radius: 450
+                });
+            }
+        });
+    }
 
     tilesToRender.forEach(t => { 
         const key = `${t.x}_${t.y}`;
@@ -883,28 +1137,26 @@ function renderMapTiles(tiles) {
             }
         }
 
-        const playerX = parseInt(gameState.x || 0, 10);
-        const playerY = parseInt(gameState.y || 0, 10);
         const tx = parseInt(t.x, 10);
         const ty = parseInt(t.y, 10);
         const dx = tx - playerX;
         const dy = ty - playerY;
 
-        const pOffsetX = (playerY % 2 !== 0) ? (HEX_WIDTH / 2) : 0;
-        const pPosX = (playerX * HEX_WIDTH) + pOffsetX;
-        const pPosY = (playerY * HEX_HEIGHT);
-
         const tOffsetX = (ty % 2 !== 0) ? (HEX_WIDTH / 2) : 0;
         const tPosX = (tx * HEX_WIDTH) + tOffsetX;
         const tPosY = (ty * HEX_HEIGHT);
 
-        const pxDistance = Math.hypot(tPosX - pPosX, tPosY - pPosY);
-
         let lightAdjust = 1;
         if (cfg.dynamicLightingEnabled) {
-            const lightRadiusPx = 750;
-            const base = Math.max(0.42, 1 - (pxDistance / lightRadiusPx));
-            lightAdjust = Math.min(1, base + 0.18);
+            let maxBase = 0;
+            for (let i = 0; i < lightSources.length; i++) {
+                const src = lightSources[i];
+                const pxDist = Math.hypot(tPosX - src.x, tPosY - src.y);
+                const base = Math.max(0, 1 - (pxDist / src.radius));
+                if (base > maxBase) maxBase = base;
+            }
+            maxBase = Math.max(0.42, maxBase);
+            lightAdjust = Math.min(1, maxBase + 0.18);
         }
 
         const shadowCastingTypes = new Set(['mountain', 'forest', 'city_capital', 'city_village', 'hills', 'hills2', 'wmountain', 'wforest', 'whills', 'whills2']);
@@ -940,7 +1192,7 @@ function renderMapTiles(tiles) {
     if (!playerMarker.parentNode) mapDiv.appendChild(playerMarker);
 }
 
-function updatePlayerVisuals(x, y, isInstant = false) {
+function updatePlayerVisuals(x, y, isInstant = false, isUiToggle = false) {
     const targetTile = document.querySelector(`.tile[data-x='${x}'][data-y='${y}']`);
     if (targetTile) {
         const tLeft = targetTile.offsetLeft;
@@ -983,11 +1235,11 @@ function updatePlayerVisuals(x, y, isInstant = false) {
         }
         window.currentMoveDuration = transitionDuration;
         playerMarker.style.zIndex = 1300; 
-            centerMapOnPlayer(tLeft, tTop, transitionDuration);
+            centerMapOnPlayer(tLeft, tTop, transitionDuration, isUiToggle);
     }
 }
 
-function centerMapOnPlayer(pixelX, pixelY, transitionDuration = 0) {
+function centerMapOnPlayer(pixelX, pixelY, transitionDuration = 0, isUiToggle = false) {
     const panel = document.getElementById('left-panel');
     const map = document.getElementById('map');
     if (!panel || !map) return;
@@ -1000,15 +1252,22 @@ function centerMapOnPlayer(pixelX, pixelY, transitionDuration = 0) {
     let offsetY = 0;
     const isPortrait = window.innerHeight > window.innerWidth;
     isMobile = Math.min(window.innerWidth, window.innerHeight) <= 900;
+    const isDesktop = window.innerWidth > 1366;
 
-    if (isMobile) {
+    const layout = document.getElementById('game-layout');
+    const rightPanel = document.getElementById('right-panel');
+
+    if (isUiToggle && isDesktop && layout) {
+        // Przewidywanie szerokości ekranu po wysunięciu dla animacji na PC
+        viewportWidth = layout.classList.contains('panel-collapsed') ? window.innerWidth : window.innerWidth - 350;
+    }
+
+    if (isMobile || !isDesktop) {
         scale = isPortrait ? 0.68 : 0.62;
 
-        const layout = document.getElementById('game-layout');
-        const rightPanel = document.getElementById('right-panel');
         if (isPortrait && layout && rightPanel && !layout.classList.contains('panel-collapsed')) {
             const panelHeight = rightPanel.getBoundingClientRect().height || 0;
-            offsetY = -(panelHeight * 0.2);
+            offsetY = -(panelHeight * 0.25);
         }
     }
 
@@ -1016,7 +1275,11 @@ function centerMapOnPlayer(pixelX, pixelY, transitionDuration = 0) {
     const moveX = (viewportWidth / 2) - (pixelX + 64) * scale;
     const moveY = (viewportHeight / 2) + offsetY - (pixelY + 64) * scale;
 
-    if (transitionDuration > 0) {
+    if (isUiToggle) {
+        const animDur = isDesktop ? 0.4 : 0.3;
+        map.style.transition = `transform ${animDur}s ease-in-out`;
+        map.style.willChange = 'transform';
+    } else if (transitionDuration > 0) {
         const cameraDuration = transitionDuration + 0.65;
         map.style.transition = `transform ${cameraDuration}s ease-out`;
         map.style.willChange = 'transform';
@@ -1093,16 +1356,12 @@ async function attemptMove(targetX, targetY) {
         
         updatePlayerVisuals(gameState.x, gameState.y, false);
         
-        // Check if in city to show shop button
-        const isCity = document.querySelector(`.tile[data-x='${result.new_x}'][data-y='${result.new_y}']`).className.includes('city');
-        const shopBtn = document.getElementById('shop-btn');
-        if (shopBtn) shopBtn.style.display = isCity ? 'block' : 'none';
-
         if (result.local_tiles) {
         renderMapTiles(result.local_tiles);
         }
         
         updateUI(result);
+        updateShopButtonVisibility();
         if (result.encounter) { setTimeout(() => { initGame(); }, 1000); }
     }
 }
@@ -1282,11 +1541,12 @@ function toggleCombatMode(active, currentHp, enemyHp = 0) {
     const rightPanel = document.getElementById('right-panel');
     const worldBtn = document.getElementById('world-btn');
     const shopBtn = document.getElementById('shop-btn');
+    const minimapBtn = document.getElementById('minimap-btn');
     const expandPanelBtn = document.getElementById('expand-panel-btn');
     const mobilePanelToggle = document.getElementById('mobile-panel-toggle');
     inCombatMode = active; gameState.in_combat = active;
     if (active) isProcessingTurn = false;
-    pvpActionInFlight = false;
+    updateShopButtonVisibility();
     pvpPollInFlight = false;
     pvpLastActionAt = 0;
     if (document.body) document.body.classList.toggle('combat-active', active);
@@ -1295,7 +1555,7 @@ function toggleCombatMode(active, currentHp, enemyHp = 0) {
     if (topLeftUi) topLeftUi.style.display = active ? 'none' : '';
     if (rightPanel) rightPanel.style.display = active ? 'none' : '';
     if (worldBtn) worldBtn.style.display = active ? 'none' : worldBtn.style.display;
-    if (shopBtn) shopBtn.style.display = active ? 'none' : shopBtn.style.display;
+    if (minimapBtn) minimapBtn.style.display = active ? 'none' : 'block';
     if (expandPanelBtn) expandPanelBtn.style.display = active ? 'none' : '';
     if (mobilePanelToggle) mobilePanelToggle.style.display = active ? 'none' : '';
 
@@ -1352,6 +1612,7 @@ function toggleCombatMode(active, currentHp, enemyHp = 0) {
         startMultiplayerPolling(); // Resume polling after combat
         renderCombatSkillQuickbar();
     }
+    updateTutorialCloud();
 }
 
 function updateApDisplay() {
@@ -2022,10 +2283,26 @@ function updateLocalState(data) {
 
 function updateUI(data) {
     if(!data) return;
-    if(data.hp !== undefined) { const maxHp = data.max_hp || gameState.max_hp; document.getElementById('hp').innerText = `${data.hp} / ${maxHp}`; document.getElementById('hp-fill').style.width = (data.hp / maxHp * 100) + '%'; }
+    if(data.hp !== undefined) { 
+        const maxHp = data.max_hp || gameState.max_hp; 
+        document.getElementById('hp').innerText = `${data.hp} / ${maxHp}`; 
+        document.getElementById('hp-fill').style.width = (data.hp / maxHp * 100) + '%'; 
+        const mHpVal = document.getElementById('mini-hp-val');
+        if(mHpVal) mHpVal.innerText = data.hp;
+        const mHpFill = document.getElementById('mini-hp-fill');
+        if(mHpFill) mHpFill.style.width = (data.hp / maxHp * 100) + '%';
+    }
     if(data.energy !== undefined) { const maxEn = data.max_energy || gameState.max_energy; document.getElementById('energy').innerText = `${data.energy} / ${maxEn}`; document.getElementById('en-fill').style.width = (data.energy / maxEn * 100) + '%'; }
     if(data.steps_buffer !== undefined) document.getElementById('steps-info').innerText = data.steps_buffer + '/10';
-    if(data.xp !== undefined) { const maxXp = data.max_xp || gameState.max_xp; document.getElementById('xp-text').innerText = `${data.xp} / ${maxXp}`; document.getElementById('xp-fill').style.width = (data.xp / maxXp * 100) + '%'; }
+    if(data.xp !== undefined) { 
+        const maxXp = data.max_xp || gameState.max_xp; 
+        document.getElementById('xp-text').innerText = `${data.xp} / ${maxXp}`; 
+        document.getElementById('xp-fill').style.width = (data.xp / maxXp * 100) + '%'; 
+        const mXpVal = document.getElementById('mini-xp-val');
+        if(mXpVal) mXpVal.innerText = data.xp;
+        const mXpFill = document.getElementById('mini-xp-fill');
+        if(mXpFill) mXpFill.style.width = (data.xp / maxXp * 100) + '%';
+    }
     if(data.level) document.getElementById('lvl').innerText = data.level;
     if(data.name || gameState.name) { const charName = data.name || gameState.name; document.getElementById('class-name').innerText = charName; }
     if(data.class_id || gameState.class_id) { const classId = data.class_id || gameState.class_id; const className = CLASS_NAMES[classId] || 'Unknown'; const classEl = document.getElementById('char-class'); if(classEl) classEl.innerText = className; }
@@ -2039,6 +2316,7 @@ function updateUI(data) {
     refreshSelectedSkillsByLevel();
     updateAttributesUI(data);
     maybeNotifySkillUnlock();
+    updateTutorialCloud();
 }
 
 function updateBar(elementId, current, max) {
@@ -2379,8 +2657,8 @@ async function selectCharacter(charId) {
     const data = await apiPost('select_character', { character_id: charId });
     if (data.status === 'success') {
         document.getElementById('char-selection-modal').style.display = 'none';
-        playTransitionOverlay(() => {
-            startGame();
+        playTransitionOverlay(async () => {
+            await startGame();
         });
     }
 }
@@ -2419,7 +2697,7 @@ function closeCreateCharacter() {
 
 function closeCharacterSelection() {
     if (!gameState || !gameState.id) return;
-    playTransitionOverlay(() => {
+    playTransitionOverlay(async () => {
         const modal = document.getElementById('char-selection-modal');
         if (modal) modal.style.display = 'none';
         const gameLayout = document.getElementById('game-layout');
@@ -2429,18 +2707,44 @@ function closeCharacterSelection() {
 }
 
 function playTransitionOverlay(done) {
-    const overlay = document.getElementById('transition-overlay');
+    let overlay = document.getElementById('transition-overlay');
     if (!overlay) {
-        if (typeof done === 'function') done();
-        return;
+        overlay = document.createElement('div');
+        overlay.id = 'transition-overlay';
+        document.body.appendChild(overlay);
     }
-    overlay.classList.add('active');
-    setTimeout(() => {
-        if (typeof done === 'function') done();
-    }, 160);
-    setTimeout(() => {
-        overlay.classList.remove('active');
-    }, 360);
+    
+    overlay.classList.remove('active');
+    
+    overlay.style.cssText = `
+        position: fixed;
+        top: 0; left: 0; width: 100vw; height: 100vh;
+        background: radial-gradient(circle, #1a0b2e 0%, #050011 100%);
+        z-index: 999999;
+        pointer-events: all;
+        opacity: 0;
+        transform: scale(1.2);
+        transition: opacity 0.8s ease, transform 0.8s cubic-bezier(0.25, 1, 0.5, 1);
+        display: block;
+    `;
+    
+    void overlay.offsetWidth; // Force layout reflow
+    
+    overlay.style.opacity = '1';
+    overlay.style.transform = 'scale(1)';
+    
+    setTimeout(async () => {
+        if (typeof done === 'function') await done();
+        
+        overlay.style.opacity = '0';
+        overlay.style.transform = 'scale(1.5)';
+        
+        setTimeout(() => {
+            overlay.style.display = 'none';
+            overlay.style.pointerEvents = 'none';
+        }, 850);
+        
+    }, 850);
 }
 
 window.closeCreateCharacter = closeCreateCharacter;
@@ -2915,6 +3219,12 @@ function showRespawnEffect() {
     effect.style.top = targetY + 'px';
     
     mapDiv.appendChild(effect);
+    
+    const teleSound = new Audio('assets/ui/misc_1.wav'); // Replace with 'assets/ui/teleport.wav' if you have a specific sound file
+    teleSound.volume = sfxVolume;
+    teleSound.playbackRate = 0.6; // Lower pitch for a teleportation effect
+    teleSound.play().catch(() => {});
+
     setTimeout(() => effect.remove(), 1000);
 }
 
@@ -3159,14 +3469,17 @@ function updateDayNightCycle() {
     const hour = new Date().getHours();
     let color = 'rgba(0, 0, 0, 0)'; // Dzień (domyślnie)
     let isNight = false;
+    const isGlaciem = gameState.world_id === 5;
 
     if (hour >= 21 || hour < 5) {
-        color = 'rgba(0, 5, 20, 0.6)'; // Noc
+        color = isGlaciem ? 'rgba(0, 10, 30, 0.75)' : 'rgba(0, 5, 20, 0.6)'; // Noc
         isNight = true;
     } else if (hour >= 5 && hour < 8) {
-        color = 'rgba(200, 100, 50, 0.2)'; // Świt
+        color = isGlaciem ? 'rgba(80, 120, 160, 0.35)' : 'rgba(200, 100, 50, 0.2)'; // Świt
     } else if (hour >= 17 && hour < 21) {
-        color = 'rgba(80, 40, 100, 0.3)'; // Zmierzch
+        color = isGlaciem ? 'rgba(30, 40, 70, 0.45)' : 'rgba(80, 40, 100, 0.3)'; // Zmierzch
+    } else {
+        if (isGlaciem) color = 'rgba(20, 30, 50, 0.25)'; // Zimny, mroczny dzień na Glaciem
     }
     
     overlay.style.backgroundColor = color;
@@ -3335,18 +3648,16 @@ window.toggleRightPanel = function() {
     if (!layout) return;
 
     layout.classList.toggle('panel-collapsed');
-    
+
     const mobileToggle = document.getElementById('mobile-panel-toggle');
     if (mobileToggle) {
         mobileToggle.innerHTML = layout.classList.contains('panel-collapsed') ? '☰' : '✕';
     }
 
-    // Re-center map after animation finishes
-    setTimeout(() => {
-        if (typeof updatePlayerVisuals === 'function') {
-            updatePlayerVisuals(gameState.x, gameState.y, true);
-        }
-    }, 400);
+    // Re-center map immediately with a UI transition to match the panel animation
+    if (typeof updatePlayerVisuals === 'function') {
+        updatePlayerVisuals(gameState.x, gameState.y, true, true);
+    }
 }
 
 function isElementVisible(el) {
@@ -3361,8 +3672,33 @@ function isPlayerInSettlement() {
     return tile.classList.contains('city_capital') || tile.classList.contains('city_village');
 }
 
+function updateShopButtonVisibility() {
+    const shopBtn = document.getElementById('shop-btn');
+    if (!shopBtn) return;
+
+    // Ukryj w trakcie walki
+    if (gameState.in_combat) {
+        shopBtn.style.display = 'none';
+        return;
+    }
+
+    // Sprawdź typ kafelka z pamięci podręcznej dla większej niezawodności
+    let isCity = false;
+    if (latestTileCache && latestTileCache.length > 0) {
+        const playerTile = latestTileCache.find(t => t.x == gameState.x && t.y == gameState.y);
+        if (playerTile) {
+            isCity = playerTile.type.includes('city');
+        }
+    } else {
+        isCity = isPlayerInSettlement(); // Opcja zapasowa
+    }
+    
+    shopBtn.style.display = isCity ? 'inline-flex' : 'none';
+}
+
 function closeOpenOverlayByPriority() {
     const closeMap = [
+        { id: 'minimap-modal', close: () => toggleMinimap() },
         { id: 'mobile-disclaimer-modal', close: () => { document.getElementById('mobile-disclaimer-modal').style.display = 'none'; } },
         { id: 'item-menu-modal', close: () => { document.getElementById('item-menu-modal').style.display = 'none'; } },
         { id: 'skill-selection-modal', close: () => closeSkillSelectionModal() },
@@ -3579,9 +3915,129 @@ function updateCombatBackground() {
 }
 
 function applyResponsiveStyles() {
-    return;
+    if (!document.getElementById('transparent-ui-style')) {
+        const style = document.createElement('style');
+        style.id = 'transparent-ui-style';
+        style.innerHTML = `
+            #left-panel, #right-panel, .bottom-tabs, #bottom-bar {
+                background-color: rgba(20, 20, 20, 0.75) !important;
+                backdrop-filter: blur(5px);
+            }
+            .close-x {
+                background: url('assets/ui/ex.png') center/contain no-repeat !important;
+                color: transparent !important;
+                border: none !important;
+                width: 24px !important;
+                height: 24px !important;
+                min-width: 24px !important;
+                min-height: 24px !important;
+                padding: 0 !important;
+                overflow: hidden;
+                display: inline-block;
+                filter: drop-shadow(0 0 2px #000);
+                cursor: pointer;
+            }
+            .close-x:hover {
+                transform: scale(1.1);
+            }
+            
+            /* Poprawki dla modala Select World */
+            #world-selection > div {
+                position: relative !important;
+                box-sizing: border-box !important;
+                display: flex !important;
+                flex-direction: column !important;
+            }
+            #world-selection > div > div:first-child {
+                width: 100% !important;
+            }
+            #world-selection h2 {
+                text-align: center !important;
+                width: 100% !important;
+                margin: 0 0 20px 0 !important;
+            }
+            #world-selection .close-x {
+                position: absolute !important;
+                top: 15px !important;
+                right: 15px !important;
+                margin: 0 !important;
+            }
+            #world-list {
+                width: 100% !important;
+                box-sizing: border-box !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                display: flex !important;
+                flex-direction: column !important;
+                gap: 10px !important;
+            }
+            .world-item {
+                width: 100% !important;
+                box-sizing: border-box !important;
+                margin: 0 !important;
+                text-align: center !important;
+            }
+        `;
+        document.head.appendChild(style);
+    }
 }
 
+function injectButtonSizeStyles() {
+    const styleId = 'unified-button-styles';
+    const existingStyle = document.getElementById(styleId);
+    if (existingStyle) existingStyle.remove(); // Usuń istniejące style, aby je zaktualizować
+
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.innerHTML = `
+        /* Ogólne style dla wszystkich trzech przycisków */
+        #world-btn, #planet-change-btn, #shop-btn {
+            width: 180px;
+            height: 42px;
+            padding: 0;
+            box-sizing: border-box;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 5px;
+            text-shadow: 1px 1px 1px rgba(0,0,0,0.5);
+            transition: transform 0.1s, box-shadow 0.2s;
+        }
+
+        #world-btn:hover, #planet-change-btn:hover, #shop-btn:hover {
+            transform: scale(1.03);
+        }
+
+        /* Specyficzny styl dla przycisku marketu */
+        #shop-btn {
+            background: gold;
+            color: black;
+            box-shadow: 0 0 10px #000;
+        }
+
+        @media (max-width: 900px) {
+            .bottom-tabs {
+                display: flex;
+                justify-content: flex-end; /* Wyrównuje przyciski do prawej */
+                gap: 5px; /* Zmniejsza odstęp między przyciskami */
+                padding: 0 5px; /* Dodaje mały margines od krawędzi ekranu */
+                align-items: center;
+                height: 100%;
+            }
+
+            #world-btn, #planet-change-btn, #shop-btn {
+                width: 125px;  /* Dodatkowo zmniejszona szerokość */
+                height: 34px;  /* Dodatkowo zmniejszona wysokość */
+                font-size: 12px; /* Dodatkowo zmniejszona czcionka */
+            }
+        }
+    `;
+    document.head.appendChild(style);
+}
 function updateCombatCamera() {
     const container = document.getElementById('combat-arena-container');
     const screen = document.getElementById('combat-screen');
@@ -4027,10 +4483,15 @@ async function purchasePlanetTravel(planetName) {
     if (teleRes.status === 'success') {
         showToast(`✨ Traveled to ${planetName}!`, 'success');
         closePlanetChangeModal();
-        // Reload game - reinitialize everything
-        setTimeout(() => {
-            initGame();
-        }, 500);
+        
+        playTransitionOverlay(async () => {
+            if (typeof initGame === 'function') {
+                await initGame();
+                showRespawnEffect();
+            } else {
+                window.location.reload();
+            }
+        });
     } else {
         showToast(teleRes.message || 'Travel failed.', 'error');
     }
@@ -4043,3 +4504,121 @@ switchTab = function(tabName) {
     }
     _originalSwitchTab(tabName);
 };
+
+window.toggleMinimap = function() {
+    let modal = document.getElementById('minimap-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'minimap-modal';
+        modal.style.cssText = 'position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); display:none; justify-content:center; align-items:center; z-index:10500;';
+        modal.innerHTML = `
+            <div style="background:#1a1a1a; padding:20px; border:2px solid #444; border-radius:10px; text-align:center; box-shadow:0 0 20px #000; width: 90vw; max-width: 800px; height: 85vh; display: flex; flex-direction: column;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                    <h2 style="color:gold; margin:0;">🗺️ World Map</h2>
+                    <img src="assets/ui/ex.png" onclick="toggleMinimap()" style="width:28px; height:28px; cursor:pointer; transition:transform 0.1s; filter:drop-shadow(0 0 2px #000);" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'" alt="X">
+                </div>
+                <div id="minimap-scroll-container" style="overflow:auto; background:#050011; border:1px solid #333; flex-grow:1; display:flex; padding: 20px; position:relative; border-radius: 5px;">
+                    <canvas id="minimap-canvas" style="image-rendering:pixelated; margin: auto;"></canvas>
+                </div>
+                <div style="color:#aaa; font-size:12px; margin-top:10px;">Explore the world to reveal more tiles. Red dot is your position.</div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        modal.onclick = (e) => { if (e.target === modal) toggleMinimap(); };
+    }
+    
+    if (modal.style.display === 'none' || !modal.style.display) {
+        modal.style.display = 'flex';
+        drawMinimap();
+    } else {
+        modal.style.display = 'none';
+    }
+};
+
+function drawMinimap() {
+    const canvas = document.getElementById('minimap-canvas');
+    const container = document.getElementById('minimap-scroll-container');
+    if (!canvas || !gameState.world_id) return;
+    const wid = gameState.world_id;
+    const tiles = discoveredTiles[wid] || {};
+    
+    const keys = Object.keys(tiles);
+    if (keys.length === 0) return;
+
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    keys.forEach(k => {
+        const [xStr, yStr] = k.split('_');
+        const x = parseInt(xStr), y = parseInt(yStr);
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+    });
+
+    const pad = 3;
+    minX = Math.max(0, minX - pad);
+    maxX += pad;
+    minY = Math.max(0, minY - pad);
+    maxY += pad;
+
+    const gridW = maxX - minX + 1;
+    const gridH = maxY - minY + 1;
+    
+    const TILE_W = 12; 
+    const TILE_H = 7; 
+    canvas.width = gridW * TILE_W + (TILE_W / 2);
+    canvas.height = gridH * TILE_H;
+
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const colors = {
+        'grass': '#4caf50', 'grass2': '#8bc34a', 'forest': '#2e7d32',
+        'mountain': '#757575', 'water': '#1e88e5', 'city_capital': '#ffd700',
+        'city_village': '#ff9800', 'hills': '#a1887f', 'hills2': '#8d6e63',
+        'farmlands': '#d4e157',
+        'wgrass': '#e0f7fa', 'wgrass2': '#b2ebf2', 'wforest': '#4dd0e1',
+        'wmountain': '#9e9e9e', 'wwater': '#4fc3f7', 'whills': '#cfd8dc',
+        'whills2': '#b0bec5', 'wfarmlands': '#fff59d'
+    };
+
+    keys.forEach(k => {
+        const [xStr, yStr] = k.split('_');
+        const x = parseInt(xStr), y = parseInt(yStr);
+        const type = tiles[k];
+        
+        const offsetX = (y % 2 !== 0) ? (TILE_W / 2) : 0;
+        const px = (x - minX) * TILE_W + offsetX;
+        const py = (y - minY) * TILE_H;
+
+        ctx.fillStyle = colors[type] || '#333';
+        ctx.fillRect(px, py, TILE_W + 1, TILE_H + 1); // +1 ukrywa ewentualne przerwy pomiędzy pikselami
+    });
+
+    // Kropka gracza
+    const pxX = (gameState.x - minX) * TILE_W + ((gameState.y % 2 !== 0) ? (TILE_W / 2) : 0);
+    const pxY = (gameState.y - minY) * TILE_H;
+    
+    ctx.fillStyle = '#ff1744';
+    ctx.beginPath();
+    ctx.arc(pxX + TILE_W/2, pxY + TILE_H/2, Math.max(3, TILE_H/1.5), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Wycentrowanie Scrolla automatycznie na postać
+    if (container) {
+        setTimeout(() => {
+            const padding = 20; 
+            const targetScrollLeft = pxX + padding - container.clientWidth / 2;
+            const targetScrollTop = pxY + padding - container.clientHeight / 2;
+            
+            container.scrollTo({
+                left: Math.max(0, targetScrollLeft),
+                top: Math.max(0, targetScrollTop),
+                behavior: 'smooth'
+            });
+        }, 10);
+    }
+}

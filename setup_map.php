@@ -814,27 +814,34 @@ try {
     // 5. Zapis do bazy
     viz($tiles, "Saving to Database (This may take a moment)...");
     
-    $batchSize = 2000;
-    $count = 0;
-    $batch = [];
+    $pdo->beginTransaction();
+    $batchSize = 1000; // Good balance for prepared statements
+    $sql_prefix = "INSERT INTO map_tiles (world_id, x, y, type) VALUES ";
+    $insert_query_parts = [];
+    $insert_data = [];
     
     for ($y = 0; $y < $height; $y++) {
         for ($x = 0; $x < $width; $x++) {
-            $batch[] = "({$worldId}, {$x}, {$y}, '" . addslashes($tiles[$y][$x]) . "')";
-            $count++;
+            $insert_query_parts[] = "(?, ?, ?, ?)";
+            $insert_data[] = $worldId;
+            $insert_data[] = $x;
+            $insert_data[] = $y;
+            $insert_data[] = $tiles[$y][$x];
             
-            if ($count % $batchSize === 0) {
-                $sql = "INSERT INTO map_tiles (world_id, x, y, type) VALUES " . implode(',', $batch);
-                $pdo->exec($sql);
-                $batch = [];
+            if (count($insert_query_parts) >= $batchSize) {
+                $stmt = $pdo->prepare($sql_prefix . implode(',', $insert_query_parts));
+                $stmt->execute($insert_data);
+                $insert_query_parts = [];
+                $insert_data = [];
             }
         }
     }
     
-    if (!empty($batch)) {
-        $sql = "INSERT INTO map_tiles (world_id, x, y, type) VALUES " . implode(',', $batch);
-        $pdo->exec($sql);
+    if (!empty($insert_query_parts)) {
+        $stmt = $pdo->prepare($sql_prefix . implode(',', $insert_query_parts));
+        $stmt->execute($insert_data);
     }
+    $pdo->commit();
 
     echo "<script>document.getElementById('vizStatus').innerText = 'Generation Complete!';</script>";
     echo "<h1 style='color:green'>SUCCESS! Added world '$worldName'.</h1>";

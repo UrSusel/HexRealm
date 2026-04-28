@@ -319,32 +319,35 @@ try {
 
     echo "Phase 6: Inserting into database...<br>";
 
-    // Batch insert tiles (1000 at a time for performance)
+    $pdo->beginTransaction();
     $batchSize = 1000;
-    $count = 0;
-    $batch = [];
+    $sql_prefix = "INSERT INTO tiles_solaris (x, y, type) VALUES ";
+    $insert_query_parts = [];
+    $insert_data = [];
     
     for ($y = 0; $y < $height; $y++) {
         for ($x = 0; $x < $width; $x++) {
-            $batch[] = "({$x}, {$y}, '" . addslashes($tiles[$y][$x]) . "')";
-            $count++;
+            $insert_query_parts[] = "(?, ?, ?)";
+            $insert_data[] = $x;
+            $insert_data[] = $y;
+            $insert_data[] = $tiles[$y][$x];
             
-            // Every 1000 tiles, execute batch insert
-            if ($count % $batchSize === 0) {
-                $sql = "INSERT INTO tiles_solaris (x, y, type) VALUES " . implode(',', $batch);
-                $pdo->exec($sql);
-                $batch = [];
-                echo "Inserted $count tiles...<br>";
+            if (count($insert_query_parts) >= $batchSize) {
+                $stmt = $pdo->prepare($sql_prefix . implode(',', $insert_query_parts));
+                $stmt->execute($insert_data);
+                $insert_query_parts = [];
+                $insert_data = [];
+                echo "Inserted " . ($y * $width + $x) . " tiles...<br>";
             }
         }
     }
     
-    // Insert remaining tiles
-    if (!empty($batch)) {
-        $sql = "INSERT INTO tiles_solaris (x, y, type) VALUES " . implode(',', $batch);
-        $pdo->exec($sql);
+    if (!empty($insert_query_parts)) {
+        $stmt = $pdo->prepare($sql_prefix . implode(',', $insert_query_parts));
+        $stmt->execute($insert_data);
         echo "Inserted remaining tiles...<br>";
     }
+    $pdo->commit();
 
     echo "<h1 style='color:green'>✅ Solaris generated successfully!</h1>";
     echo "<p>Generated " . ($width * $height) . " tiles into tiles_solaris table</p>";

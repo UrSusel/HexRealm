@@ -893,10 +893,28 @@ function formatCoins(totalCopper, useHtml = false) {
 
     const parts = [];
     const wrap = (label, color) => useHtml ? `<span style="color:${color};">${label}</span>` : label;
-    if (gold > 0) parts.push(wrap(`${gold} gold coin${gold === 1 ? '' : 's'}`, COIN_COLORS.gold));
-    if (silver > 0) parts.push(wrap(`${silver} silver coin${silver === 1 ? '' : 's'}`, COIN_COLORS.silver));
-    if (copper > 0 || parts.length === 0) parts.push(wrap(`${copper} copper coin${copper === 1 ? '' : 's'}`, COIN_COLORS.copper));
+    if (gold > 0) parts.push(wrap(`${gold} gold`, COIN_COLORS.gold));
+    if (silver > 0) parts.push(wrap(`${silver} silver`, COIN_COLORS.silver));
+    if (copper > 0 || parts.length === 0) parts.push(wrap(`${copper} copper`, COIN_COLORS.copper));
     return parts.join(' ');
+}
+
+function formatCoinsSimple(totalCopper, useHtml = false) {
+    const value = Math.max(0, parseInt(totalCopper || 0, 10) || 0);
+    const copper = value % COIN_COPPER_PER_SILVER;
+    const totalSilver = Math.floor(value / COIN_COPPER_PER_SILVER);
+    const silver = totalSilver % COIN_SILVER_PER_GOLD;
+    const gold = Math.floor(totalSilver / COIN_SILVER_PER_GOLD);
+
+    const wrap = (label, color) => useHtml ? `<span style="color:${color};">${label}</span>` : label;
+
+    if (gold > 0) {
+        return wrap(`${gold} gold coin${gold === 1 ? '' : 's'}`, COIN_COLORS.gold);
+    }
+    if (silver > 0) {
+        return wrap(`${silver} silver coin${silver === 1 ? '' : 's'}`, COIN_COLORS.silver);
+    }
+    return wrap(`${copper} copper coin${copper === 1 ? '' : 's'}`, COIN_COLORS.copper);
 }
 async function apiPost(action, body = {}) {
     try {
@@ -1159,7 +1177,7 @@ function renderMapTiles(tiles) {
             lightAdjust = Math.min(1, maxBase + 0.18);
         }
 
-        const shadowCastingTypes = new Set(['mountain', 'forest', 'city_capital', 'city_village', 'hills', 'hills2', 'wmountain', 'wforest', 'whills', 'whills2']);
+        const shadowCastingTypes = new Set(['mountain', 'forest', 'city_capital', 'city_village', 'hills', 'hills2', 'wmountain', 'wforest', 'whills', 'whills2', 'grass2']);
         let newFilter = '';
         if (cfg.shadingEnabled && shadowCastingTypes.has(t.type)) {
             const dir = getLightDirectionVector();
@@ -2284,20 +2302,19 @@ function updateLocalState(data) {
 function updateUI(data) {
     if(!data) return;
     if(data.hp !== undefined) { 
-        const maxHp = data.max_hp || gameState.max_hp; 
-        document.getElementById('hp').innerText = `${data.hp} / ${maxHp}`; 
-        document.getElementById('hp-fill').style.width = (data.hp / maxHp * 100) + '%'; 
+        const maxHp = data.max_hp || gameState.max_hp;
         const mHpVal = document.getElementById('mini-hp-val');
         if(mHpVal) mHpVal.innerText = data.hp;
         const mHpFill = document.getElementById('mini-hp-fill');
         if(mHpFill) mHpFill.style.width = (data.hp / maxHp * 100) + '%';
     }
-    if(data.energy !== undefined) { const maxEn = data.max_energy || gameState.max_energy; document.getElementById('energy').innerText = `${data.energy} / ${maxEn}`; document.getElementById('en-fill').style.width = (data.energy / maxEn * 100) + '%'; }
-    if(data.steps_buffer !== undefined) document.getElementById('steps-info').innerText = data.steps_buffer + '/10';
+    if(data.energy !== undefined) {
+        const maxEn = data.max_energy || gameState.max_energy;
+        const energyEl = document.getElementById('energy');
+        if (energyEl) energyEl.innerText = `${data.energy}/${maxEn}`;
+    }
     if(data.xp !== undefined) { 
-        const maxXp = data.max_xp || gameState.max_xp; 
-        document.getElementById('xp-text').innerText = `${data.xp} / ${maxXp}`; 
-        document.getElementById('xp-fill').style.width = (data.xp / maxXp * 100) + '%'; 
+        const maxXp = data.max_xp || gameState.max_xp;
         const mXpVal = document.getElementById('mini-xp-val');
         if(mXpVal) mXpVal.innerText = data.xp;
         const mXpFill = document.getElementById('mini-xp-fill');
@@ -2308,8 +2325,12 @@ function updateUI(data) {
     if(data.class_id || gameState.class_id) { const classId = data.class_id || gameState.class_id; const className = CLASS_NAMES[classId] || 'Unknown'; const classEl = document.getElementById('char-class'); if(classEl) classEl.innerText = className; }
     if(data.gold !== undefined || gameState.gold !== undefined) {
         const g = data.gold !== undefined ? data.gold : gameState.gold;
-        const gel = document.getElementById('gold-val');
-        if (gel) gel.innerHTML = formatCoins(g, true);
+        // Top bar (simple display)
+        const topBarGoldEl = document.getElementById('gold-val');
+        if (topBarGoldEl) topBarGoldEl.innerHTML = formatCoinsSimple(g, true);
+        // Inventory tab (full display)
+        const invGoldEl = document.getElementById('inventory-gold-full');
+        if (invGoldEl) invGoldEl.innerHTML = formatCoins(g, true);
         const mapGoldEl = document.getElementById('gold-display');
         if (mapGoldEl) mapGoldEl.innerHTML = formatCoins(g, true);
     }
@@ -2380,10 +2401,11 @@ window.spendPoint = async function(stat) {
 }
 
 
-window.switchTab = function(name) {
+window.switchTab = function(name, button) {
     document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
     document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
     document.getElementById('tab-' + name).classList.add('active');
+    if (button) button.classList.add('active');
 }
 
 function toggleSettings() {
@@ -3112,7 +3134,6 @@ function renderOtherPlayer(playerId) {
         otherPlayerMarkers[playerId] = marker;
     } else {
         marker.style.display = 'block';
-        // REMOVED: mapDiv.appendChild(marker); -- This was causing the crash/freeze by re-inserting DOM node constantly
         const label = marker.querySelector('.player-label');
         if (label) label.innerHTML = `${escapeHtml(player.name)} (Lvl ${player.level})`;
 
@@ -4498,11 +4519,11 @@ async function purchasePlanetTravel(planetName) {
 }
 // Wrap original switchTab to load quests when switching to quest tab
 const _originalSwitchTab = switchTab;
-switchTab = function(tabName) {
+switchTab = function(tabName, button) {
     if (tabName === 'quests') {
         loadActiveQuests();
     }
-    _originalSwitchTab(tabName);
+    _originalSwitchTab(tabName, button);
 };
 
 window.toggleMinimap = function() {

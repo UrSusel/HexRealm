@@ -2051,9 +2051,8 @@ if ($action === 'get_other_players') {
 
     try {
         $stmt = $pdo->prepare("
-            SELECT c.id, c.name, c.pos_x, c.pos_y, c.level, u.username
-        FROM characters c
-            JOIN users u ON c.user_id = u.id
+            SELECT id, name, pos_x, pos_y, level
+            FROM characters c
             WHERE c.world_id = ? AND c.id != ? AND c.last_seen > DATE_SUB(NOW(), INTERVAL ? MINUTE)
             AND c.pos_x BETWEEN ? AND ? AND c.pos_y BETWEEN ? AND ?
             ORDER BY c.last_seen DESC

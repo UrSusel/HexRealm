@@ -389,12 +389,31 @@ try {
     $stmt->execute([$worldName, $width, $height]);
     $worldId = $pdo->lastInsertId();
 
-    $stmt = $pdo->prepare("INSERT INTO map_tiles (world_id, x, y, type) VALUES (?, ?, ?, ?)");
     $pdo->beginTransaction();
+    $batchSize = 1000;
+    $sql_prefix = "INSERT INTO map_tiles (world_id, x, y, type) VALUES ";
+    $insert_query_parts = [];
+    $insert_data = [];
+
     for ($y = 0; $y < $height; $y++) {
         for ($x = 0; $x < $width; $x++) {
-            $stmt->execute([$worldId, $x, $y, $tiles[$y][$x]]);
+            $insert_query_parts[] = "(?, ?, ?, ?)";
+            $insert_data[] = $worldId;
+            $insert_data[] = $x;
+            $insert_data[] = $y;
+            $insert_data[] = $tiles[$y][$x];
+
+            if (count($insert_query_parts) >= $batchSize) {
+                $stmt = $pdo->prepare($sql_prefix . implode(',', $insert_query_parts));
+                $stmt->execute($insert_data);
+                $insert_query_parts = [];
+                $insert_data = [];
+            }
         }
+    }
+    if (!empty($insert_query_parts)) {
+        $stmt = $pdo->prepare($sql_prefix . implode(',', $insert_query_parts));
+        $stmt->execute($insert_data);
     }
     $pdo->commit();
     

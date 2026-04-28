@@ -1858,21 +1858,25 @@ header('Expires: 0');
         <div id="right-panel-header" onclick="if(window.innerWidth <= 1366 && window.innerHeight > window.innerWidth) toggleRightPanel()" style="padding:6px 10px; border-bottom:2px solid #61491f; background:linear-gradient(180deg, #3d2f1f 0%, #2a1e14 100%); display:flex; justify-content:space-between; align-items:center; height:60px; box-sizing:border-box; cursor:pointer;">
             
             <!-- Lewa strona: Paski i Info Gracza połączone razem -->
-            <div style="display:flex; align-items:center; gap:12px; flex-grow:1; overflow:hidden;">
-                <div style="display:flex; flex-direction:column; justify-content:center; gap:3px; width:85px; flex-shrink:0;">
+            <div style="display:flex; align-items:center; gap:16px; flex-grow:1; overflow:hidden;">
+                <div style="display:flex; flex-direction:column; justify-content:center; gap:3px; width:80px; flex-shrink:0;">
                     <div style="font-size:12px; font-weight:bold; color:#f4d58d; text-align:left; line-height:1; display:flex; justify-content:space-between;"><span>HP</span><span id="mini-hp-val">100</span></div>
                     <div style="width:100%; height:5px; background:#222; border-radius:3px; border:1px solid #444; overflow:hidden;">
                         <div id="mini-hp-fill" style="width:100%; height:100%; background:#d32f2f; transition:width 0.2s;"></div>
                     </div>
-                    <div style="font-size:12px; font-weight:bold; color:#f4d58d; text-align:left; line-height:1; margin-top:2px; display:flex; justify-content:space-between;"><span>XP</span><span id="mini-xp-val">0</span></div>
+                    <div style="font-size:12px; font-weight:bold; color:#f4d58d; text-align:left; line-height:1; margin-top:4px; display:flex; justify-content:space-between;"><span>XP</span><span id="mini-xp-val">0</span></div>
                     <div style="width:100%; height:5px; background:#222; border-radius:3px; border:1px solid #444; overflow:hidden;">
                         <div id="mini-xp-fill" style="width:0%; height:100%; background:#00e676; transition:width 0.2s;"></div>
                     </div>
                 </div>
                 
-                <div style="display:flex; flex-direction:column; justify-content:center; overflow:hidden;">
-                    <div id="class-name" style="color:#ffeaa7; font-size:16px; font-weight:bold; text-shadow:1px 1px 2px rgba(0,0,0,0.8); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:140px; text-align:left;">Character</div>
-                    <div style="font-size:14px; color:#8b7355; margin-top:2px; text-align:left;">Lvl <span id="lvl" style="font-size:20px; color:#fff; font-weight:bold;">1</span> <span class="hide-on-mobile">- <span id="char-class" style="color:#c9a875; font-size:12px;">Unknown</span></span></div>
+                <div style="display:flex; flex-direction:column; justify-content:center; overflow:hidden; gap: 2px;">
+                    <div id="class-name" style="color:#ffeaa7; font-size:16px; font-weight:bold; text-shadow:1px 1px 2px rgba(0,0,0,0.8); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:140px; text-align:left; display:flex; align-items:center;">Character</div>
+                    <div style="font-size:12px; color:#8b7355; text-align:left; display:flex; align-items:center;">Lvl <span id="lvl" style="font-size:16px; color:#fff; font-weight:bold;">1</span> <span class="hide-on-mobile">- <span id="char-class" style="color:#c9a875; font-size:11px;">Unknown</span></span></div>
+                    <div style="font-size:12px; color:#c9a875; text-align:left; white-space:nowrap; display:flex; align-items:center;">
+                        <span style="color:#82b1ff;">⚡</span> <span id="energy">10/10</span>
+                        <span style="margin-left: 8px; color:#ffd700;">💰</span> <span id="gold-val">0 copper coins</span>
+                    </div>
                 </div>
             </div>
             
@@ -1886,39 +1890,13 @@ header('Expires: 0');
         </div>
 
         <div class="tabs">
-            <button class="tab-btn active" onclick="switchTab('stats')">Character</button>
-            <button class="tab-btn" onclick="switchTab('inventory')">Inventory</button>
-            <button class="tab-btn" onclick="switchTab('attributes')">Attributes</button>
-            <button class="tab-btn" onclick="switchTab('quests')">Quests</button>
+            <button class="tab-btn active" onclick="switchTab('inventory', this)">Inventory</button>
+            <button class="tab-btn" onclick="switchTab('attributes', this)">Attributes</button>
+            <button class="tab-btn" onclick="switchTab('quests', this)">Quests</button>
         </div>
 
-        <div id="tab-stats" class="tab-content active">
-            <div style="color:#f4d58d;">Health: <span id="hp">100 / 100</span></div>
-            <div class="big-bar-widget">
-                <div class="hb-fill-wrapper"><div class="hb-fill" id="hp-fill" style="width:100%"></div></div>
-                <div class="hb-left"></div>
-                <div class="hb-middle"></div>
-                <div class="hb-right"></div>
-            </div>
-            <div style="margin-top:15px; color:#f4d58d;">Energy: <span id="energy">10 / 10</span></div>
-            <div class="big-bar-widget">
-                <div class="hb-fill-wrapper"><div class="hb-fill energy" id="en-fill" style="width:100%"></div></div>
-                <div class="hb-left"></div>
-                <div class="hb-middle"></div>
-                <div class="hb-right"></div>
-            </div>
-            <div style="text-align:right; font-size:11px; color:#5c4a35;">Steps: <span id="steps-info">0/10</span></div>
-            <div style="margin-top:15px; color:#f4d58d;">XP: <span id="xp-text">0 / 100</span></div>
-            <div class="big-bar-widget">
-                <div class="hb-fill-wrapper"><div class="hb-fill xp" id="xp-fill" style="width:100%"></div></div>
-                <div class="hb-left"></div>
-                <div class="hb-middle"></div>
-                <div class="hb-right"></div>
-            </div>
-            <div style="margin-top:15px; color:#f4d58d;">Coins: <span id="gold-val" style="color:#d4af37; font-weight:bold;">0 copper coins</span></div>
-        </div>
-
-        <div id="tab-inventory" class="tab-content">
+        <div id="tab-inventory" class="tab-content active">
+            <div style="text-align:center; margin-bottom:15px; color:#f4d58d;">Coins: <span id="inventory-gold-full" style="color:#d4af37; font-weight:bold;">0 copper</span></div>
             <h3>Backpack</h3>
             <div id="inventory-grid" class="item-grid"></div>
         </div>

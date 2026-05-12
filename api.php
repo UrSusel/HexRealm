@@ -1142,9 +1142,9 @@ if ($action === 'move') {
         }
 
         
-        $chance = 15;
+        $chance = 4; // Zmniejszone z 7%
         if ($char['world_id'] == 1 && $char['tutorial_completed'] == 0) {
-            $chance = 35; // 35% szansy w tutorialu żeby szybko spotkać wroga
+            $chance = 9; // Zmniejszone z 17%
         }
 
         if (!$COMBAT_DISABLED && rand(1, 100) <= $chance) { 
@@ -1169,6 +1169,13 @@ if ($action === 'move') {
                 if ($char['level'] >= 3) $weightedTypes['yellow'] = 60;
                 if ($char['level'] >= 5) $weightedTypes['orange'] = 70;
                 if ($char['level'] >= 7) $weightedTypes['red'] = 60;
+            }
+            
+            // Potwory 4 (orange) i 5 (red) mogą pojawić się tylko na kafelkach lasu i wzgórz
+            $isForestOrHills = in_array($targetTile['type'], ['forest', 'wforest', 'hills', 'hills2', 'whills', 'whills2'], true);
+            if (!$isForestOrHills) {
+                unset($weightedTypes['orange']);
+                unset($weightedTypes['red']);
             }
             
             $rand = mt_rand(1, array_sum($weightedTypes));

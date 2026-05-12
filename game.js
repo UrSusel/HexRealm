@@ -85,8 +85,8 @@ let currentAnimState = 'idle';
 let currentFrameIndex = 0;
 let animationInterval;
 let moveTimeout = null;
-const ANIMATION_SPEED = 100; // Animation frame speed stays the same
-const MOVEMENT_SPEED_PX = 300; // Doubled to match the doubled distance
+const ANIMATION_SPEED = 100;
+const MOVEMENT_SPEED_PX = 250; // Zmniejszona prędkość dla bardziej kontrolowanego chodu
 let combatAnimInterval = null;
 let combatFrameIndex = 0;
 let pvpActionInFlight = false;
@@ -442,25 +442,40 @@ function updateTutorialCloud() {
         return;
     }
 
-    if (tutorialCloudHidden || gameState.tutorial_completed || gameState.world_id !== 1) {
-        cloud.style.display = 'none';
+    const closeBtn = '<img src="assets/ui/ex.png" onclick="hideTutorialCloud()" style="pointer-events:auto; position:absolute; top:8px; right:8px; width:20px; height:20px; cursor:pointer; transition: transform 0.1s; filter:drop-shadow(0 0 2px #000);" onmouseover="this.style.transform=\'scale(1.2)\'" onmouseout="this.style.transform=\'scale(1)\'">';
+
+    if (!tutorialCloudHidden && !gameState.tutorial_completed && gameState.world_id === 1) {
+        cloud.style.display = 'block';
+        if (gameState.in_combat) {
+            cloud.innerHTML = closeBtn + '<strong style="color:#ffd700; font-size:16px;">⚔️ Combat Tutorial</strong><br><br><span style="color:#aaffaa;"><b>Move:</b></span> Click a nearby tile (costs AP)<br><span style="color:#ffaaaa;"><b>Attack:</b></span> Click the Enemy (costs 2 AP)<br><span style="color:#aaaaff;"><b>Skills:</b></span> Use buttons below (costs 1 AP)<br><br>Defeat the monster to complete the tutorial!';
+        } else {
+            const isSafeZone = isPlayerInSettlement();
+            if (isSafeZone) {
+                cloud.innerHTML = closeBtn + '<strong style="color:#ffd700; font-size:16px;">🗺️ Exploration Tutorial</strong><br><br>Welcome to HexRealm!<br>You are currently in a <span style="color:#aaffaa;">Safe Zone (City)</span>.<br><br>Click adjacent tiles to move.<br>Moving in the wild costs <span style="color:#ffffaa;">Energy</span> and can trigger <b>Monster Ambushes</b>.<br><br>Find and defeat a monster to proceed!';
+            } else {
+                cloud.innerHTML = closeBtn + '<strong style="color:#ffd700; font-size:16px;">🌲 Wilderness</strong><br><br>You are in the wild!<br>Keep moving to explore. Every step costs Energy.<br>Watch out for <b>Monster Ambushes</b>!<br><br>Defeat a monster to complete the tutorial.';
+            }
+        }
         return;
     }
 
-    cloud.style.display = 'block';
-
-    const closeBtn = '<img src="assets/ui/ex.png" onclick="hideTutorialCloud()" style="pointer-events:auto; position:absolute; top:8px; right:8px; width:20px; height:20px; cursor:pointer; transition: transform 0.1s; filter:drop-shadow(0 0 2px #000);" onmouseover="this.style.transform=\'scale(1.2)\'" onmouseout="this.style.transform=\'scale(1)\'">';
-
-    if (gameState.in_combat) {
-        cloud.innerHTML = closeBtn + '<strong style="color:#ffd700; font-size:16px;">⚔️ Combat Tutorial</strong><br><br><span style="color:#aaffaa;"><b>Move:</b></span> Click a nearby tile (costs AP)<br><span style="color:#ffaaaa;"><b>Attack:</b></span> Click the Enemy (costs 2 AP)<br><span style="color:#aaaaff;"><b>Skills:</b></span> Use buttons below (costs 1 AP)<br><br>Defeat the monster to complete the tutorial!';
-    } else {
-        const isSafeZone = isPlayerInSettlement();
-        if (isSafeZone) {
-            cloud.innerHTML = closeBtn + '<strong style="color:#ffd700; font-size:16px;">🗺️ Exploration Tutorial</strong><br><br>Welcome to HexRealm!<br>You are currently in a <span style="color:#aaffaa;">Safe Zone (City)</span>.<br><br>Click adjacent tiles to move.<br>Moving in the wild costs <span style="color:#ffffaa;">Energy</span> and can trigger <b>Monster Ambushes</b>.<br><br>Find and defeat a monster to proceed!';
-        } else {
-            cloud.innerHTML = closeBtn + '<strong style="color:#ffd700; font-size:16px;">🌲 Wilderness</strong><br><br>You are in the wild!<br>Keep moving to explore. Every step costs Energy.<br>Watch out for <b>Monster Ambushes</b>!<br><br>Defeat a monster to complete the tutorial.';
-        }
+    const lvl2Key = 'rpg_seen_lvl2_' + (gameState.id || 0);
+    if (gameState.level === 2 && gameState.stat_points >= 3 && !gameState.in_combat && !localStorage.getItem(lvl2Key)) {
+        cloud.style.display = 'block';
+        cloud.innerHTML = `<img src="assets/ui/ex.png" onclick="localStorage.setItem('${lvl2Key}', '1'); updateTutorialCloud();" style="pointer-events:auto; position:absolute; top:8px; right:8px; width:20px; height:20px; cursor:pointer; transition: transform 0.1s; filter:drop-shadow(0 0 2px #000);" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">` + 
+            `<strong style="color:#ffd700; font-size:16px;">🌟 Level Up!</strong><br><br>You have reached Level 2!<br>You received <span style="color:#00e676;">3 Stat Points</span>.<br><br>Open the <b>Attributes</b> tab on the right panel to increase your stats!`;
+        return;
     }
+
+    const lvl5Key = 'rpg_seen_lvl5_' + (gameState.id || 0);
+    if (gameState.level === 5 && getUnlockedSkillCount() === 0 && !gameState.in_combat && !localStorage.getItem(lvl5Key)) {
+        cloud.style.display = 'block';
+        cloud.innerHTML = `<img src="assets/ui/ex.png" onclick="localStorage.setItem('${lvl5Key}', '1'); updateTutorialCloud();" style="pointer-events:auto; position:absolute; top:8px; right:8px; width:20px; height:20px; cursor:pointer; transition: transform 0.1s; filter:drop-shadow(0 0 2px #000);" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">` + 
+            `<strong style="color:#ffd700; font-size:16px;">✨ First Skill!</strong><br><br>You have reached Level 5!<br>You gained a <span style="color:#00e676;">Skill Unlock</span> slot.<br><br>Go to the <b>Attributes</b> tab and click <b>Unlock / Configure</b> to learn your first combat skill!`;
+        return;
+    }
+
+    cloud.style.display = 'none';
 }
 
 // --- START ---
@@ -1149,7 +1164,10 @@ function renderMapTiles(tiles) {
             mapDiv.appendChild(tile);
             isNew = true;
         } else {
-            const expectedClass = `tile ${t.type}`;
+            let expectedClass = `tile ${t.type}`;
+            if (tile.classList.contains('path-target-tile')) {
+                expectedClass += ' path-target-tile';
+            }
             if (tile.className !== expectedClass) {
                 tile.className = expectedClass;
             }
@@ -1331,18 +1349,185 @@ function updatePlayerSprite() {
     if (frames && frames.length > 0) playerMarker.style.backgroundImage = `url('${frames[currentFrameIndex]}')`;
 }
 
-async function attemptMove(targetX, targetY) {
-    if (gameState.hp <= 0 || gameState.in_combat || gameState.is_pvp) return;
-    if (targetX < gameState.x) playerMarker.style.transform = "scaleX(-1)"; else if (targetX > gameState.x) playerMarker.style.transform = "scaleX(1)";
-    
-    // Prevent moving to self (resting should be explicit, prevents accidental clicks)
-    if (targetX === gameState.x && targetY === gameState.y) return;
+let isAutoMoving = false;
+let currentPath = [];
+let autoMoveTimeout = null;
 
-    // Check if target is a safe zone (city/village)
+function getGameDistance(x1, y1, x2, y2) {
+    x1 = parseInt(x1, 10); y1 = parseInt(y1, 10);
+    x2 = parseInt(x2, 10); y2 = parseInt(y2, 10);
+    
+    const q1 = x1 - Math.floor(y1 / 2);
+    const r1 = y1;
+    const s1 = -q1 - r1;
+    
+    const q2 = x2 - Math.floor(y2 / 2);
+    const r2 = y2;
+    const s2 = -q2 - r2;
+    
+    const dist = (Math.abs(q1 - q2) + Math.abs(r1 - r2) + Math.abs(s1 - s2)) / 2;
+    if (y1 === y2) return dist * 2;
+    return dist;
+}
+
+function findPath(startX, startY, goalX, goalY) {
+    startX = parseInt(startX, 10);
+    startY = parseInt(startY, 10);
+    goalX = parseInt(goalX, 10);
+    goalY = parseInt(goalY, 10);
+
+    const wid = gameState.world_id;
+    const tiles = discoveredTiles[wid] || {};
+    
+    const goalKey = `${goalX}_${goalY}`;
+    const goalType = tiles[goalKey];
+    if (goalType && (goalType === 'water' || goalType === 'mountain' || goalType === 'wwater' || goalType === 'wmountain')) {
+        return null;
+    }
+
+    const openSet = [{ x: startX, y: startY, g: 0, f: getGameDistance(startX, startY, goalX, goalY) }];
+    const cameFrom = new Map();
+    const gScore = new Map();
+    gScore.set(`${startX}_${startY}`, 0);
+    
+    let iterations = 0;
+    
+    while (openSet.length > 0 && iterations < 2000) {
+        iterations++;
+        
+        openSet.sort((a, b) => a.f - b.f);
+        const current = openSet.shift();
+        
+        if (current.x === goalX && current.y === goalY) {
+            const path = [];
+            let currKey = `${current.x}_${current.y}`;
+            while (cameFrom.has(currKey)) {
+                const step = cameFrom.get(currKey);
+                path.unshift({ x: step.toX, y: step.toY });
+                currKey = `${step.fromX}_${step.fromY}`;
+            }
+            return path;
+        }
+        
+        const currKey = `${current.x}_${current.y}`;
+        const offsets = (current.y % 2 !== 0)
+            ? [[1,0],[1,-1],[0,-1],[-1,0],[0,1],[1,1], [0,-2], [0,2]]
+            : [[1,0],[0,-1],[-1,-1],[-1,0],[-1,1],[0,1], [0,-2], [0,2]];
+            
+        for (let o of offsets) {
+            const nx = current.x + o[0];
+            const ny = current.y + o[1];
+            const nKey = `${nx}_${ny}`;
+            
+            const nType = tiles[nKey];
+            if (nType && (nType === 'water' || nType === 'mountain' || nType === 'wwater' || nType === 'wmountain')) {
+                continue;
+            }
+            
+            const moveCost = getGameDistance(current.x, current.y, nx, ny);
+            const tentativeG = gScore.get(currKey) + moveCost;
+            
+            if (!gScore.has(nKey) || tentativeG < gScore.get(nKey)) {
+                cameFrom.set(nKey, { fromX: current.x, fromY: current.y, toX: nx, toY: ny });
+                gScore.set(nKey, tentativeG);
+                const f = tentativeG + getGameDistance(nx, ny, goalX, goalY);
+                openSet.push({ x: nx, y: ny, g: tentativeG, f: f });
+            }
+        }
+    }
+    
+    return null;
+}
+
+function drawPathHighlight() {
+    if (!document.getElementById('path-highlight-styles')) {
+        const style = document.createElement('style');
+        style.id = 'path-highlight-styles';
+        style.innerHTML = `
+            .path-target-tile {
+                z-index: 1000 !important;
+                filter: brightness(1.6) drop-shadow(0 0 15px rgba(255, 215, 0, 1)) !important;
+                animation: targetPulse 0.8s infinite alternate !important;
+            }
+            @keyframes targetPulse {
+                0% { filter: brightness(1.3) drop-shadow(0 0 10px rgba(255, 215, 0, 0.6)) !important; }
+                100% { filter: brightness(1.8) drop-shadow(0 0 25px rgba(255, 215, 0, 1)) !important; }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    document.querySelectorAll('.path-dot').forEach(el => el.remove());
+    document.querySelectorAll('.path-target-tile').forEach(el => el.classList.remove('path-target-tile'));
+    
+    if (!currentPath || currentPath.length === 0) return;
+
+    const mapDiv = document.getElementById('map');
+    if (!mapDiv) return;
+
+    currentPath.forEach((step, index) => {
+        const isLast = (index === currentPath.length - 1);
+        
+        if (isLast) {
+            const tile = document.querySelector(`.tile[data-x='${step.x}'][data-y='${step.y}']`);
+            if (tile) tile.classList.add('path-target-tile');
+            
+            const marker = document.createElement('div');
+            marker.className = 'path-dot'; 
+            let offsetX = (step.y % 2 !== 0) ? (HEX_WIDTH / 2) : 0;
+            let posX = (step.x * HEX_WIDTH) + offsetX + (HEX_WIDTH / 2) - 24;
+            let posY = (step.y * HEX_HEIGHT) + (HEX_HEIGHT / 2) - 30;
+            
+            marker.style.cssText = `left: ${posX}px; top: ${posY}px; position: absolute; width: 48px; height: 48px; background-image: url('assets/ui/Cursor_02.png'); background-size: contain; background-repeat: no-repeat; pointer-events: none; z-index: 1001; filter: drop-shadow(0 -4px 4px rgba(0,0,0,0.8));`;
+            
+            marker.animate([
+                { transform: 'translateY(0px) rotate(180deg) scaleX(-1)' },
+                { transform: 'translateY(-15px) rotate(180deg) scaleX(-1)' }
+            ], { duration: 600, direction: 'alternate', iterations: Infinity, easing: 'ease-in-out' });
+            
+            mapDiv.appendChild(marker);
+        } else {
+            const dot = document.createElement('div');
+            dot.className = 'path-dot';
+            
+            let offsetX = (step.y % 2 !== 0) ? (HEX_WIDTH / 2) : 0;
+            let posX = (step.x * HEX_WIDTH) + offsetX + (HEX_WIDTH / 2) - 8;
+            let posY = (step.y * HEX_HEIGHT) + (HEX_HEIGHT / 2) - 8;
+            
+            dot.style.left = posX + 'px';
+            dot.style.top = posY + 'px';
+            dot.style.position = 'absolute';
+            dot.style.width = '16px';
+            dot.style.height = '16px';
+            dot.style.backgroundColor = 'rgba(255, 215, 0, 0.6)';
+            dot.style.borderRadius = '50%';
+            dot.style.pointerEvents = 'none';
+            dot.style.zIndex = '900';
+            dot.style.boxShadow = '0 0 8px rgba(255, 215, 0, 0.8)';
+            dot.style.opacity = Math.max(0.2, 1 - (index * 0.05));
+            dot.style.transition = 'opacity 0.2s';
+
+            mapDiv.appendChild(dot);
+        }
+    });
+}
+
+async function attemptMove(targetX, targetY) {
+    targetX = parseInt(targetX, 10);
+    targetY = parseInt(targetY, 10);
+
+    if (gameState.hp <= 0 || gameState.in_combat || gameState.is_pvp) return;
+    
+    if (targetX === gameState.x && targetY === gameState.y) {
+        currentPath = [];
+        isAutoMoving = false;
+        drawPathHighlight();
+        return;
+    }
+
     const targetTile = document.querySelector(`.tile[data-x='${targetX}'][data-y='${targetY}']`);
     const isSafeZone = targetTile && (targetTile.classList.contains('city_capital') || targetTile.classList.contains('city_village'));
 
-    // Check for interaction with other players (only outside safe zones)
     if (!isSafeZone) {
         const targetPlayerId = Object.keys(otherPlayers).find(id => 
             otherPlayers[id].x == targetX && otherPlayers[id].y == targetY
@@ -1352,6 +1537,46 @@ async function attemptMove(targetX, targetY) {
             return;
         }
     }
+
+    const path = findPath(gameState.x, gameState.y, targetX, targetY);
+    if (!path || path.length === 0) {
+        showToast("No valid path found!", "error");
+        return;
+    }
+    
+    currentPath = path;
+    drawPathHighlight();
+    if (!isAutoMoving) {
+        processNextMove();
+    }
+}
+
+async function processNextMove() {
+    if (!currentPath || currentPath.length === 0) {
+        isAutoMoving = false;
+        drawPathHighlight();
+        return;
+    }
+    if (gameState.hp <= 0 || gameState.in_combat || gameState.is_pvp) {
+        currentPath = [];
+        isAutoMoving = false;
+        drawPathHighlight();
+        return;
+    }
+
+    isAutoMoving = true;
+    const nextStep = currentPath.shift();
+    drawPathHighlight();
+    const targetX = nextStep.x;
+    const targetY = nextStep.y;
+
+    if (targetX === gameState.x && targetY === gameState.y) {
+        processNextMove();
+        return;
+    }
+
+    if (targetX < gameState.x) playerMarker.style.transform = "scaleX(-1)"; 
+    else if (targetX > gameState.x) playerMarker.style.transform = "scaleX(1)";
 
     const serverPreset = resolveGraphicsPresetName();
     const res = await fetch('api.php', { 
@@ -1375,12 +1600,34 @@ async function attemptMove(targetX, targetY) {
         updatePlayerVisuals(gameState.x, gameState.y, false);
         
         if (result.local_tiles) {
-        renderMapTiles(result.local_tiles);
+            renderMapTiles(result.local_tiles);
         }
         
         updateUI(result);
         updateShopButtonVisibility();
-        if (result.encounter) { setTimeout(() => { initGame(); }, 1000); }
+        
+        if (result.encounter) { 
+            currentPath = [];
+            isAutoMoving = false;
+            drawPathHighlight();
+            setTimeout(() => { initGame(); }, 1000); 
+        } else {
+            let duration = 0.3;
+            if (window.currentMoveDuration) {
+                duration = window.currentMoveDuration;
+            }
+            if (autoMoveTimeout) clearTimeout(autoMoveTimeout);
+            autoMoveTimeout = setTimeout(() => {
+                processNextMove();
+            }, Math.max(0, (duration * 1000) - 50)); // Pobiera krok tuż przed końcem, zapobiega nienaturalnemu sprintowi
+        }
+    } else {
+        currentPath = [];
+        isAutoMoving = false;
+        drawPathHighlight();
+        if (result.message) {
+            showToast(result.message, 'error');
+        }
     }
 }
 
@@ -1565,6 +1812,12 @@ function toggleCombatMode(active, currentHp, enemyHp = 0) {
     inCombatMode = active; gameState.in_combat = active;
     if (active) isProcessingTurn = false;
     updateShopButtonVisibility();
+
+    currentPath = [];
+    isAutoMoving = false;
+    if (autoMoveTimeout) clearTimeout(autoMoveTimeout);
+    if (typeof drawPathHighlight === 'function') drawPathHighlight();
+
     pvpPollInFlight = false;
     pvpLastActionAt = 0;
     if (document.body) document.body.classList.toggle('combat-active', active);

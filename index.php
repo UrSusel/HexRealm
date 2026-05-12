@@ -960,16 +960,22 @@ header('Expires: 0');
         .loading-bar-bg { 
             width: 300px; 
             height: 24px; 
-            background: linear-gradient(135deg, #2d1f12, #3a2a1a);\n            border: 3px solid #5c4a35;\n            border-radius: 3px;\n            overflow: hidden; 
+            background: linear-gradient(135deg, #2d1f12, #3a2a1a);
+            border: 3px solid #5c4a35;
+            border-radius: 3px;
+            overflow: hidden; 
             margin-top: 20px; 
             position: relative; 
-            box-shadow: 0 4px 15px rgba(0,0,0,0.7), inset 0 2px 4px rgba(0,0,0,0.5);\n            image-rendering: pixelated;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.7), inset 0 2px 4px rgba(0,0,0,0.5);
+            image-rendering: pixelated;
         }
         .loading-bar-fill { 
             height: 100%; 
-            background: linear-gradient(180deg, #d4af37, #b8941f);\n            width: 0%; 
+            background: linear-gradient(180deg, #d4af37, #b8941f);
+            width: 0%; 
             transition: width 0.2s linear; 
-            box-shadow: 0 0 10px rgba(212,175,55,0.6);\n        }
+            box-shadow: 0 0 10px rgba(212,175,55,0.6);
+        }
         
         /* --- RANGE INPUTS (SLIDERS) --- */
         input[type="range"] {
@@ -1075,26 +1081,27 @@ header('Expires: 0');
         
         /* Shop Button */
         #shop-btn {
-            padding: 10px 20px;
-            background: linear-gradient(180deg, #d4af37 0%, #b8941f 50%, #9c7f18 100%);
-            color: #1a1410;
-            border: 2px solid #c5a028;
-            border-radius: 2px;
+            /* Stylized to match other main buttons */
+            background: linear-gradient(180deg, #8b6f47 0%, #6b5737 50%, #4a3d28 100%);
+            color: #e0e0e0;
             font-weight: bold;
+            border: 2px solid #5c4a35;
+            border-radius: 2px;
             cursor: pointer;
-            box-shadow: 0 3px 0 #7a6012, 0 5px 10px rgba(212,175,55,0.4);
-            text-shadow: 1px 1px 1px rgba(255,255,255,0.3);
+            box-shadow: 0 3px 0 #3a2820, 0 5px 10px rgba(255,215,0,0.2);
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
             transition: all 0.1s;
             image-rendering: pixelated;
         }
         #shop-btn:hover {
-            background: linear-gradient(180deg, #e4bf47 0%, #c8a42f 50%, #ac8f28 100%);
+            background: linear-gradient(180deg, #9b7f57 0%, #7b6747 50%, #5a4d38 100%);
             transform: translateY(-1px);
-            box-shadow: 0 4px 0 #7a6012, 0 6px 12px rgba(212,175,55,0.5);
+            box-shadow: 0 4px 0 #3a2820, 0 6px 12px rgba(255,215,0,0.3);
+            border-color: #ffd700;
         }
         #shop-btn:active {
             transform: translateY(2px);
-            box-shadow: 0 1px 0 #7a6012, 0 2px 4px rgba(212,175,55,0.3);
+            box-shadow: 0 1px 0 #3a2820, 0 2px 4px rgba(0,0,0,0.3);
         }
 
         /* --- RESPONSIVE / MOBILE --- */
@@ -1255,19 +1262,20 @@ header('Expires: 0');
                 position: fixed !important;
                 z-index: 10001 !important;
                 transition: bottom 0.3s ease-in-out;
+                left: 20px; /* Domyślnie po lewej */
             }
             #world-btn, #shop-btn {
-                bottom: calc(35vh + 10px + env(safe-area-inset-bottom)) !important;
+                bottom: calc(35vh + 10px + env(safe-area-inset-bottom, 0px)) !important;
             }
             #planet-change-btn {
-                bottom: calc(35vh + 45px + env(safe-area-inset-bottom)) !important;
+                bottom: calc(35vh + 50px + env(safe-area-inset-bottom, 0px)) !important; /* Zwiększony odstęp */
             }
             #game-layout.panel-collapsed #left-panel #world-btn,
             #game-layout.panel-collapsed #left-panel #shop-btn {
-                bottom: calc(60px + 10px + env(safe-area-inset-bottom)) !important;
+                bottom: calc(60px + 10px + env(safe-area-inset-bottom, 0px)) !important;
             }
             #game-layout.panel-collapsed #left-panel #planet-change-btn {
-                bottom: calc(60px + 45px + env(safe-area-inset-bottom)) !important;
+                bottom: calc(60px + 50px + env(safe-area-inset-bottom, 0px)) !important; /* Zwiększony odstęp */
             }
 
             #game-layout.panel-collapsed #right-panel {
@@ -1277,12 +1285,9 @@ header('Expires: 0');
 
             /* Adjust shop button for portrait */
             #shop-btn {
-                left: 50% !important;
-                right: auto !important;
-                transform: translateX(-50%) !important;
-                bottom: calc(35vh + 10px + env(safe-area-inset-bottom)) !important;
-                padding: 8px 15px;
-                font-size: 12px;
+                left: auto !important; /* Usuń pozycjonowanie z lewej */
+                right: 20px !important; /* Przesuń na prawo */
+                transform: none !important; /* Usuń transformację */
                 z-index: 10001 !important;
             }
 
@@ -1344,14 +1349,12 @@ header('Expires: 0');
                 bottom: auto !important;
                 position: fixed;
                 z-index: 3100;
-                padding: 5px 8px;
-                font-size: 10px;
             }
             #shop-btn {
-                left: 50% !important;
-                right: auto !important;
-                bottom: calc(10px + env(safe-area-inset-bottom)) !important;
-                transform: translateX(-50%) !important;
+                left: auto !important; /* Usuń pozycjonowanie z lewej */
+                right: 10px !important; /* Przesuń na prawo */
+                bottom: calc(10px + env(safe-area-inset-bottom, 0px)) !important;
+                transform: none !important; /* Usuń transformację */
                 position: fixed;
                 z-index: 10001;
             }
@@ -1507,7 +1510,7 @@ header('Expires: 0');
             #shop-btn {
                 left: 50% !important;
                 right: auto !important;
-                bottom: calc(20px + env(safe-area-inset-bottom)) !important;
+                bottom: calc(20px + env(safe-area-inset-bottom, 0px)) !important;
                 transform: translateX(-50%) !important;
                 position: fixed;
                 z-index: 10001;

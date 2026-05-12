@@ -4274,35 +4274,9 @@ function injectButtonSizeStyles() {
             align-items: center;
             justify-content: center;
             text-align: center;
-            border: none;
-            font-weight: bold;
-            cursor: pointer;
-            border-radius: 5px;
-            text-shadow: 1px 1px 1px rgba(0,0,0,0.5);
-            transition: transform 0.1s, box-shadow 0.2s;
-        }
-
-        #world-btn:hover, #planet-change-btn:hover, #shop-btn:hover {
-            transform: scale(1.03);
-        }
-
-        /* Specyficzny styl dla przycisku marketu */
-        #shop-btn {
-            background: gold;
-            color: black;
-            box-shadow: 0 0 10px #000;
         }
 
         @media (max-width: 900px) {
-            .bottom-tabs {
-                display: flex;
-                justify-content: flex-end; /* Wyrównuje przyciski do prawej */
-                gap: 5px; /* Zmniejsza odstęp między przyciskami */
-                padding: 0 5px; /* Dodaje mały margines od krawędzi ekranu */
-                align-items: center;
-                height: 100%;
-            }
-
             #world-btn, #planet-change-btn, #shop-btn {
                 width: 125px;  /* Dodatkowo zmniejszona szerokość */
                 height: 34px;  /* Dodatkowo zmniejszona wysokość */
